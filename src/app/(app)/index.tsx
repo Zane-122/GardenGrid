@@ -1,5 +1,5 @@
 import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
+import { Platform, Pressable, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AnimatedIcon } from '@/components/animated-icon';
@@ -8,6 +8,8 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { WebBadge } from '@/components/web-badge';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { useOnboarding } from '@/context/onboarding';
+import { useTheme } from '@/hooks/use-theme';
 
 function getDevMenuHint() {
   if (Platform.OS === 'web') {
@@ -29,30 +31,50 @@ function getDevMenuHint() {
 }
 
 export default function HomeScreen() {
+  const theme = useTheme();
+  const { profile, resetOnboarding } = useOnboarding();
+  const greeting = profile?.firstName ? `Welcome, ${profile.firstName}` : 'Welcome to Garden Grid';
+
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <ThemedView style={styles.heroSection}>
           <AnimatedIcon />
           <ThemedText type="title" style={styles.title}>
-            Welcome to&nbsp;Expo
+            {greeting}
           </ThemedText>
         </ThemedView>
 
         <ThemedText type="code" style={styles.code}>
-          get started
+          Garden Grid
         </ThemedText>
 
         <ThemedView type="backgroundElement" style={styles.stepContainer}>
+          <HintRow title="Display name" hint={profile?.displayName ?? '—'} />
+          <HintRow title="Username" hint={profile ? `@${profile.username}` : '—'} />
           <HintRow
-            title="Try editing"
-            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
+            title="Appearance"
+            hint={profile?.themePreference === 'dark' ? 'Dark mode' : 'Light mode'}
           />
+          <HintRow title="Has a garden" hint={profile?.hasGarden ? 'Yes' : 'Not yet'} />
+        </ThemedView>
+
+        <Pressable
+          accessibilityRole="button"
+          onPress={resetOnboarding}
+          style={({ pressed }) => [
+            styles.resetButton,
+            { borderColor: theme.border, backgroundColor: theme.surface },
+            pressed && styles.pressed,
+          ]}>
+          <ThemedText type="smallBold">Replay onboarding</ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            Testing only — clears saved profile
+          </ThemedText>
+        </Pressable>
+
+        <ThemedView type="backgroundElement" style={styles.stepContainer}>
           <HintRow title="Dev tools" hint={getDevMenuHint()} />
-          <HintRow
-            title="Fresh start"
-            hint={<ThemedText type="code">npm run reset-project</ThemedText>}
-          />
         </ThemedView>
 
         {Platform.OS === 'web' && <WebBadge />}
@@ -94,5 +116,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.four,
     borderRadius: Spacing.four,
+  },
+  resetButton: {
+    alignSelf: 'stretch',
+    gap: Spacing.half,
+    borderWidth: 1,
+    borderRadius: Spacing.three,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.three,
+  },
+  pressed: {
+    opacity: 0.75,
   },
 });
