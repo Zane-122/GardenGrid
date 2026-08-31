@@ -2,7 +2,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Appearance, useColorScheme as useSystemColorScheme } from 'react-native';
 
-const STORAGE_KEY = 'garden-grid-onboarding';
+import { useAuth, type SignUpMetadata } from '@/context/auth';
+
+// The draft is filled in before an account exists, so it is stored per device.
+const DRAFT_STORAGE_KEY = 'garden-grid-onboarding-draft';
 
 export type ThemePreference = 'light' | 'dark' | 'system';
 
@@ -15,23 +18,23 @@ export type OnboardingDraft = {
 };
 
 export type OnboardingProfile = {
-  firstName: string;
-  lastName: string;
-  username: string;
   displayName: string;
-  themePreference: Exclude<ThemePreference, 'system'>;
-  hasGarden: boolean;
+  username: string;
+  tutorialComplete: boolean;
 };
 
 type OnboardingContextValue = {
   isReady: boolean;
-  hasCompletedOnboarding: boolean;
   draft: OnboardingDraft;
+  /** True once every onboarding question has an answer. */
+  isDraftComplete: boolean;
+  /** The metadata sent to Supabase at sign-up, or null while answers are missing. */
+  signUpMetadata: SignUpMetadata | null;
+  /** The signed-in user's profile, read back from their auth metadata. */
   profile: OnboardingProfile | null;
   colorScheme: 'light' | 'dark';
   updateDraft: (partial: Partial<OnboardingDraft>) => void;
-  completeOnboarding: () => Promise<void>;
-  resetOnboarding: () => Promise<void>;
+  resetDraft: () => Promise<void>;
 };
 
 const initialDraft: OnboardingDraft = {
@@ -61,43 +64,32 @@ function resolveColorScheme(
 
 export function OnboardingProvider({ children }: { children: ReactNode }) {
   const systemScheme = useSystemColorScheme();
+  const { user } = useAuth();
+
   const [isReady, setIsReady] = useState(false);
-  const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
   const [draft, setDraft] = useState<OnboardingDraft>(initialDraft);
-  const [profile, setProfile] = useState<OnboardingProfile | null>(null);
 
-  const themePreference = profile?.themePreference ?? draft.themePreference;
-  const colorScheme = resolveColorScheme(themePreference, systemScheme);
+  const colorScheme = resolveColorScheme(draft.themePreference, systemScheme);
 
+  // Restore an in-progress draft so a reload mid-onboarding does not lose answers.
   useEffect(() => {
     let cancelled = false;
 
     (async () => {
       try {
-        const raw = await AsyncStorage.getItem(STORAGE_KEY);
+        const raw = await AsyncStorage.getItem(DRAFT_STORAGE_KEY);
         if (!raw || cancelled) {
           return;
         }
 
-        const stored = JSON.parse(raw) as OnboardingProfile;
-        if (!stored?.username || cancelled) {
+        const stored = JSON.parse(raw) as Partial<OnboardingDraft>;
+        if (cancelled) {
           return;
         }
 
-        setProfile({
-          ...stored,
-          displayName: stored.displayName || displayNameFrom(stored.firstName, stored.lastName),
-        });
-        setDraft({
-          firstName: stored.firstName,
-          lastName: stored.lastName,
-          username: stored.username,
-          themePreference: stored.themePreference,
-          hasGarden: stored.hasGarden,
-        });
-        setHasCompletedOnboarding(true);
+        setDraft((current) => ({ ...current, ...stored }));
       } catch {
-        // Ignore corrupt test data and start onboarding again.
+        // Ignore corrupt data and start onboarding again.
       } finally {
         if (!cancelled) {
           setIsReady(true);
@@ -116,60 +108,60 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    Appearance.setColorScheme(themePreference === 'system' ? 'unspecified' : themePreference);
-  }, [themePreference]);
+    Appearance.setColorScheme(
+      draft.themePreference === 'system' ? 'unspecified' : draft.themePreference
+    );
+  }, [draft.themePreference]);
 
   const updateDraft = useCallback((partial: Partial<OnboardingDraft>) => {
-    setDraft((current) => ({ ...current, ...partial }));
+    setDraft((current) => {
+      const next = { ...current, ...partial };
+      void AsyncStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
   }, []);
 
-  const completeOnboarding = useCallback(async () => {
-    if (!draft.firstName.trim() || !draft.lastName.trim() || !draft.username.trim() || draft.hasGarden === null) {
-      return;
-    }
-
-    const nextProfile: OnboardingProfile = {
-      firstName: draft.firstName.trim(),
-      lastName: draft.lastName.trim(),
-      username: draft.username.trim(),
-      displayName: displayNameFrom(draft.firstName, draft.lastName),
-      themePreference: draft.themePreference === 'dark' ? 'dark' : 'light',
-      hasGarden: draft.hasGarden,
-    };
-
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(nextProfile));
-    setProfile(nextProfile);
-    setHasCompletedOnboarding(true);
-  }, [draft]);
-
-  const resetOnboarding = useCallback(async () => {
-    await AsyncStorage.removeItem(STORAGE_KEY);
-    setProfile(null);
+  const resetDraft = useCallback(async () => {
     setDraft(initialDraft);
-    setHasCompletedOnboarding(false);
+    await AsyncStorage.removeItem(DRAFT_STORAGE_KEY);
   }, []);
+
+  const isDraftComplete =
+    !!draft.firstName.trim() &&
+    !!draft.lastName.trim() &&
+    !!draft.username.trim() &&
+    draft.hasGarden !== null;
+
+  const signUpMetadata: SignUpMetadata | null = isDraftComplete
+    ? {
+        display_name: displayNameFrom(draft.firstName, draft.lastName),
+        username: draft.username.trim(),
+        // They already have a garden, so the in-app tutorial is not needed.
+        tutorialComplete: draft.hasGarden === true,
+      }
+    : null;
+
+  const metadata = user?.user_metadata;
+  const profile: OnboardingProfile | null = user
+    ? {
+        displayName: typeof metadata?.display_name === 'string' ? metadata.display_name : '',
+        username: typeof metadata?.username === 'string' ? metadata.username : '',
+        tutorialComplete: metadata?.tutorialComplete === true,
+      }
+    : null;
 
   const value = useMemo(
     () => ({
       isReady,
-      hasCompletedOnboarding,
       draft,
+      isDraftComplete,
+      signUpMetadata,
       profile,
       colorScheme,
       updateDraft,
-      completeOnboarding,
-      resetOnboarding,
+      resetDraft,
     }),
-    [
-      isReady,
-      hasCompletedOnboarding,
-      draft,
-      profile,
-      colorScheme,
-      updateDraft,
-      completeOnboarding,
-      resetOnboarding,
-    ]
+    [isReady, draft, isDraftComplete, signUpMetadata, profile, colorScheme, updateDraft, resetDraft]
   );
 
   return <OnboardingContext.Provider value={value}>{children}</OnboardingContext.Provider>;

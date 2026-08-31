@@ -8,6 +8,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { WebBadge } from '@/components/web-badge';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { useAuth } from '@/context/auth';
 import { useOnboarding } from '@/context/onboarding';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -32,8 +33,10 @@ function getDevMenuHint() {
 
 export default function HomeScreen() {
   const theme = useTheme();
-  const { profile, resetOnboarding } = useOnboarding();
-  const greeting = profile?.firstName ? `Welcome, ${profile.firstName}` : 'Welcome to Garden Grid';
+  const { profile } = useOnboarding();
+  const { user, signOut } = useAuth();
+  const firstName = profile?.displayName?.split(' ')[0];
+  const greeting = firstName ? `Welcome, ${firstName}` : 'Welcome to Garden Grid';
 
   return (
     <ThemedView style={styles.container}>
@@ -50,26 +53,25 @@ export default function HomeScreen() {
         </ThemedText>
 
         <ThemedView type="backgroundElement" style={styles.stepContainer}>
-          <HintRow title="Display name" hint={profile?.displayName ?? '—'} />
-          <HintRow title="Username" hint={profile ? `@${profile.username}` : '—'} />
-          <HintRow
-            title="Appearance"
-            hint={profile?.themePreference === 'dark' ? 'Dark mode' : 'Light mode'}
-          />
-          <HintRow title="Has a garden" hint={profile?.hasGarden ? 'Yes' : 'Not yet'} />
+          <HintRow title="Display name" hint={profile?.displayName || '—'} />
+          <HintRow title="Username" hint={profile?.username ? `@${profile.username}` : '—'} />
+          <HintRow title="Tutorial complete" hint={profile?.tutorialComplete ? 'Yes' : 'No'} />
+          <HintRow title="Account" hint={user?.email ?? '—'} />
         </ThemedView>
 
         <Pressable
           accessibilityRole="button"
-          onPress={resetOnboarding}
+          onPress={signOut}
           style={({ pressed }) => [
             styles.resetButton,
             { borderColor: theme.border, backgroundColor: theme.surface },
             pressed && styles.pressed,
           ]}>
-          <ThemedText type="smallBold">Replay onboarding</ThemedText>
+          <ThemedText type="smallBold" style={{ color: theme.danger }}>
+            Log out
+          </ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
-            Testing only — clears saved profile
+            Returns you to the sign-up screen
           </ThemedText>
         </Pressable>
 
