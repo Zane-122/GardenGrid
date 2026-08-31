@@ -26,11 +26,16 @@ type OnboardingShellProps = {
   continueLabel?: string;
   continueDisabled?: boolean;
   continueLoading?: boolean;
+  loadingLabel?: string;
+  /** Defaults to showing a back button on every step past the first. */
+  showBack?: boolean;
+  /** Rendered under the continue button, e.g. the "already have an account?" link. */
+  footer?: ReactNode;
 };
 
 export function OnboardingShell({
   step,
-  totalSteps = 4,
+  totalSteps = 5,
   title,
   subtitle,
   children,
@@ -38,10 +43,13 @@ export function OnboardingShell({
   continueLabel = 'Continue',
   continueDisabled = false,
   continueLoading = false,
+  loadingLabel = 'Checking…',
+  showBack,
+  footer,
 }: OnboardingShellProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const showBack = step > 1;
+  const canGoBack = showBack ?? step > 1;
 
   return (
     <ThemedView style={styles.screen}>
@@ -59,7 +67,7 @@ export function OnboardingShell({
           ]}>
           <View style={styles.header}>
             <View style={styles.headerRow}>
-              {showBack ? (
+              {canGoBack ? (
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Go back"
@@ -128,9 +136,10 @@ export function OnboardingShell({
               pressed && !continueDisabled && styles.pressed,
             ]}>
             <ThemedText type="smallBold" style={{ color: theme.onPrimary }}>
-              {continueLoading ? 'Checking…' : continueLabel}
+              {continueLoading ? loadingLabel : continueLabel}
             </ThemedText>
           </Pressable>
+          {footer ? <View style={styles.footerExtra}>{footer}</View> : null}
         </View>
       </KeyboardAvoidingView>
     </ThemedView>
@@ -202,6 +211,10 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.three,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  footerExtra: {
+    alignItems: 'center',
+    marginTop: Spacing.three,
   },
   disabled: {
     opacity: 0.4,
