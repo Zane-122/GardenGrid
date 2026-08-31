@@ -33,7 +33,12 @@
           "imageWidth": 76
         }
       ],
-      "expo-sqlite"
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Garden Grid uses your location to identify plants that grow in your area."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

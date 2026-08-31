@@ -1,6 +1,7 @@
 import { ChoiceCard } from '@/components/onboarding/choice-card';
 import { OnboardingShell } from '@/components/onboarding/onboarding-shell';
 import { useOnboarding } from '@/context/onboarding';
+import { requestGardenLocationPermission } from '../../../utils/location';
 
 export default function OnboardingGardenScreen() {
   const { draft, updateDraft, completeOnboarding } = useOnboarding();
@@ -10,6 +11,7 @@ export default function OnboardingGardenScreen() {
       return;
     }
 
+    await requestGardenLocationPermission();
     await completeOnboarding();
   }
 
@@ -17,7 +19,7 @@ export default function OnboardingGardenScreen() {
     <OnboardingShell
       step={4}
       title="Do you already have a garden?"
-      subtitle="This is just an opt-in for now so we can tailor a starting point later."
+      subtitle="This is just an opt-in for now so we can tailor a starting point later. We'll also ask for your location so plant identification can be more accurate."
       continueLabel="Get started"
       onContinue={handleContinue}
       continueDisabled={draft.hasGarden === null}>

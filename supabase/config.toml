@@ -1,0 +1,7 @@
+project_id = "bcrbjhdvqmqzrlkjrknp"
+
+[functions.search-plant-name]
+verify_jwt = true
+
+[functions.identify-plant-photo]
+verify_jwt = true
