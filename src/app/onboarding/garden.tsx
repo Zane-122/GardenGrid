@@ -3,7 +3,7 @@ import { router } from 'expo-router';
 import { ChoiceCard } from '@/components/onboarding/choice-card';
 import { OnboardingShell } from '@/components/onboarding/onboarding-shell';
 import { useOnboarding } from '@/context/onboarding';
-import { requestGardenLocationPermission } from '../../../utils/location';
+import { requestGardenLocationPermission } from '@/utils/location';
 
 export default function OnboardingGardenScreen() {
   const { draft, updateDraft } = useOnboarding();

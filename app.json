@@ -39,6 +39,14 @@
         {
           "locationWhenInUsePermission": "Garden Grid uses your location to identify plants that grow in your area."
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Garden Grid uses your photos to identify plants.",
+          "cameraPermission": "Garden Grid uses your camera to identify plants.",
+          "microphonePermission": false
+        }
       ]
     ],
     "experiments": {

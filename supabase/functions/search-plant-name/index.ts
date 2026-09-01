@@ -2,6 +2,7 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 
 import {
   BASIC_DETAILS,
+  cachePlantInfo,
   corsHeaders,
   json,
   parseCoordinates,
@@ -18,6 +19,7 @@ type SearchBody = {
   language?: string;
   latitude?: number;
   longitude?: number;
+  save?: boolean;
 };
 
 Deno.serve(async (req: Request) => {
@@ -45,12 +47,32 @@ Deno.serve(async (req: Request) => {
     if (query && !accessToken) {
       const params = new URLSearchParams({
         q: query,
-        limit: String(limit),
+        limit: '20',
         language,
+        thumbnails: 'true',
       });
       const results = await plantIdFetch(`/kb/plants/name_search?${params.toString()}`);
+      const entities = Array.isArray(results?.entities) ? results.entities : [];
+      const cachedImages = await cachedSearchImages(
+        admin,
+        entities.map((entity: { entity_name?: unknown }) => entity?.entity_name)
+      );
+
       return json({
-        entities: results?.entities ?? [],
+        entities: entities
+          .map((entity: Record<string, unknown>) => ({
+            matched_in: typeof entity.matched_in === 'string' ? entity.matched_in : '',
+            matched_in_type: typeof entity.matched_in_type === 'string' ? entity.matched_in_type : '',
+            access_token: typeof entity.access_token === 'string' ? entity.access_token : '',
+            match_position: typeof entity.match_position === 'number' ? entity.match_position : 0,
+            match_length: typeof entity.match_length === 'number' ? entity.match_length : 0,
+            entity_name: typeof entity.entity_name === 'string' ? entity.entity_name : '',
+            thumbnail:
+              cachedImages.get(typeof entity.entity_name === 'string' ? entity.entity_name : '') ??
+              asSearchThumbnail(entity.thumbnail ?? entity.image) ??
+              null,
+          }))
+          .slice(0, 20),
         entities_trimmed: Boolean(results?.entities_trimmed),
         limit: results?.limit ?? limit,
         location: coordinates,
@@ -67,7 +89,17 @@ Deno.serve(async (req: Request) => {
       return json({ error: 'Plant.id detail response was missing entity_id' }, 502);
     }
 
-    const saved = await saveUserPlant(admin, user.id, toBasicInfo(plantId, scientificName, detail));
+    const info = toBasicInfo(plantId, scientificName, detail);
+    if (body.save === false) {
+      const cached = await cachePlantInfo(admin, info);
+      return json({
+        added: false,
+        info: cached,
+        location: coordinates,
+      });
+    }
+
+    const saved = await saveUserPlant(admin, user.id, info);
     return json({
       added: true,
       plant: saved.plant,
@@ -91,3 +123,46 @@ Deno.serve(async (req: Request) => {
     );
   }
 });
+
+function asSearchThumbnail(value: unknown): string | null {
+  if (typeof value === 'string' && value.length > 0) {
+    if (value.startsWith('data:') || /^https?:\/\//.test(value)) {
+      return value;
+    }
+    return `data:image/jpeg;base64,${value}`;
+  }
+
+  if (value && typeof value === 'object') {
+    const record = value as { value?: unknown; url?: unknown };
+    return asSearchThumbnail(record.url ?? record.value);
+  }
+
+  return null;
+}
+
+async function cachedSearchImages(
+  admin: Awaited<ReturnType<typeof requireUser>>['admin'],
+  names: unknown[]
+) {
+  const scientificNames = [
+    ...new Set(names.filter((name): name is string => typeof name === 'string' && name.length > 0)),
+  ];
+  const images = new Map<string, string>();
+
+  if (scientificNames.length === 0) {
+    return images;
+  }
+
+  const { data } = await admin
+    .from('plant_basic_info')
+    .select('scientific_name, image_url')
+    .in('scientific_name', scientificNames);
+
+  for (const row of data ?? []) {
+    if (row.scientific_name && row.image_url) {
+      images.set(row.scientific_name, row.image_url);
+    }
+  }
+
+  return images;
+}

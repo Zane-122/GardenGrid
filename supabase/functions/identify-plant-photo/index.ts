@@ -2,6 +2,7 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 
 import {
   BASIC_DETAILS,
+  cachePlantInfo,
   corsHeaders,
   json,
   parseCoordinates,
@@ -15,6 +16,7 @@ type IdentifyBody = {
   images?: string[];
   latitude?: number;
   longitude?: number;
+  save?: boolean;
 };
 
 Deno.serve(async (req: Request) => {
@@ -42,6 +44,7 @@ Deno.serve(async (req: Request) => {
       method: 'POST',
       body: JSON.stringify({
         images,
+        similar_images: true,
         ...(coordinates ?? {}),
       }),
     });
@@ -68,19 +71,20 @@ Deno.serve(async (req: Request) => {
       return json({ error: 'Plant.id did not return a species suggestion' }, 502);
     }
 
-    const saved = await saveUserPlant(
-      admin,
-      user.id,
-      toBasicInfo(plantId, scientificName, top.details ?? {})
-    );
+    const info = toBasicInfo(plantId, scientificName, top.details ?? {});
+    const shouldSave = body.save !== false;
+    const result = shouldSave
+      ? await saveUserPlant(admin, user.id, info)
+      : { plant: null, info: await cachePlantInfo(admin, info) };
 
     return json({
-      added: true,
-      plant: saved.plant,
-      info: saved.info,
+      added: shouldSave,
+      plant: result.plant,
+      info: result.info,
       location: coordinates,
       is_plant: isPlant ?? null,
       identification_access_token: identification?.access_token ?? null,
+      similar_images: asSimilarImages(top.similar_images),
       suggestions: suggestions.map((suggestion: { id?: string; name?: string; probability?: number }) => ({
         id: suggestion.id ?? null,
         name: suggestion.name ?? null,
@@ -104,3 +108,43 @@ Deno.serve(async (req: Request) => {
     );
   }
 });
+
+function asSimilarImages(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => {
+      if (!item || typeof item !== 'object') {
+        return null;
+      }
+
+      const record = item as {
+        url?: unknown;
+        url_small?: unknown;
+        citation?: unknown;
+        license_name?: unknown;
+        license_url?: unknown;
+      };
+      const url =
+        typeof record.url === 'string' && record.url.length > 0
+          ? record.url
+          : typeof record.url_small === 'string' && record.url_small.length > 0
+            ? record.url_small
+            : null;
+
+      if (!url) {
+        return null;
+      }
+
+      return {
+        url,
+        citation: typeof record.citation === 'string' ? record.citation : null,
+        license_name: typeof record.license_name === 'string' ? record.license_name : null,
+        license_url: typeof record.license_url === 'string' ? record.license_url : null,
+      };
+    })
+    .filter((image): image is NonNullable<typeof image> => image != null)
+    .slice(0, 3);
+}

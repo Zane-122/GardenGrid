@@ -192,9 +192,8 @@ export async function requireUser(req: Request): Promise<{ user: User; admin: Su
   return { user: data.user, admin };
 }
 
-export async function saveUserPlant(
+export async function cachePlantInfo(
   admin: SupabaseClient,
-  userId: string,
   info: Omit<PlantBasicInfoRow, 'updated_at'>
 ) {
   const { data: basicInfo, error: infoError } = await admin
@@ -209,6 +208,16 @@ export async function saveUserPlant(
   if (infoError) {
     throw json({ error: `Failed to save plant_basic_info: ${infoError.message}` }, 500);
   }
+
+  return basicInfo as PlantBasicInfoRow;
+}
+
+export async function saveUserPlant(
+  admin: SupabaseClient,
+  userId: string,
+  info: Omit<PlantBasicInfoRow, 'updated_at'>
+) {
+  const basicInfo = await cachePlantInfo(admin, info);
 
   const { data: plant, error: plantError } = await admin
     .from('plants')
