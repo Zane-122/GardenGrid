@@ -1,24 +1,28 @@
+import { router } from 'expo-router';
+
 import { ChoiceCard } from '@/components/onboarding/choice-card';
 import { OnboardingShell } from '@/components/onboarding/onboarding-shell';
 import { useOnboarding } from '@/context/onboarding';
+import { requestGardenLocationPermission } from '@/utils/location';
 
 export default function OnboardingGardenScreen() {
-  const { draft, updateDraft, completeOnboarding } = useOnboarding();
+  const { draft, updateDraft } = useOnboarding();
 
   async function handleContinue() {
     if (draft.hasGarden === null) {
       return;
     }
 
-    await completeOnboarding();
+    await requestGardenLocationPermission();
+    router.push('/onboarding/sign-up');
   }
 
   return (
     <OnboardingShell
       step={4}
       title="Do you already have a garden?"
-      subtitle="This is just an opt-in for now so we can tailor a starting point later."
-      continueLabel="Get started"
+      subtitle="This is just an opt-in for now so we can tailor a starting point later. We'll also ask for your location so plant identification can be more accurate."
+      continueLabel="Continue"
       onContinue={handleContinue}
       continueDisabled={draft.hasGarden === null}>
       <ChoiceCard

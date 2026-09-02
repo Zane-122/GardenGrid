@@ -33,13 +33,13 @@ export function ChoiceCard({
         styles.card,
         {
           backgroundColor: selected ? theme.backgroundSelected : theme.surface,
-          borderColor: selected ? theme.primary : theme.border,
+          borderColor: selected ? theme.woodEdge : theme.wood,
         },
         pressed && styles.pressed,
       ]}>
       <View style={[styles.iconWrap, { backgroundColor: theme.backgroundElement }]}>
         {preview ? <View style={[styles.preview, preview]} /> : null}
-        <SymbolView tintColor={theme.primary} name={icon} size={22} />
+        <SymbolView tintColor={theme.wood} name={icon} size={22} />
       </View>
       <View style={styles.copy}>
         <ThemedText type="smallBold">{title}</ThemedText>
@@ -54,8 +54,8 @@ export function ChoiceCard({
 const styles = StyleSheet.create({
   card: {
     minHeight: 88,
-    borderWidth: 2,
-    borderRadius: Spacing.four,
+    borderWidth: 1,
+    borderRadius: 10,
     padding: Spacing.three,
     flexDirection: 'row',
     alignItems: 'center',

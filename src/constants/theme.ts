@@ -4,88 +4,94 @@ import { Platform } from 'react-native';
 
 export const Colors = {
   light: {
-    // Text
-    text: '#14201A',
-    textSecondary: '#5B6B60',
-    textInverse: '#F4F8F5',
+    text: '#2A1E16',
+    textSecondary: '#6B5344',
+    textInverse: '#F7F0E4',
 
-    // Backgrounds
-    background: '#F7FAF6',
-    backgroundElement: '#EDF3EA',
-    backgroundSelected: '#DCEBDC',
-    surface: '#FFFFFF',
-    border: '#DDE7DA',
+    background: '#EFE6D6',
+    backgroundElement: '#E4D4C0',
+    backgroundSelected: '#D8C3A6',
+    surface: '#F7F0E4',
+    border: '#C4A06A',
 
-    // Brand — green is the anchor
-    primary: '#2E7D32',
-    primaryLight: '#4CA753',
-    primaryDark: '#1B5E20',
-    onPrimary: '#F4F8F5',
+    primary: '#3F6B3A',
+    primaryLight: '#5A8A52',
+    primaryDark: '#2C4E29',
+    onPrimary: '#F7F0E4',
 
-    // Secondary / accent
     secondary: '#8B5E34',
-    onSecondary: '#F4F8F5',
-    accent: '#F2B705',
-    onAccent: '#14201A',
-    tint: '#2E7D32',
+    onSecondary: '#F7F0E4',
+    accent: '#C4A06A',
+    onAccent: '#2A1E16',
+    tint: '#3F6B3A',
 
-    // Status
-    success: '#2E7D32',
-    onSuccess: '#F4F8F5',
+    success: '#3F6B3A',
+    onSuccess: '#F7F0E4',
     warning: '#B45309',
-    onWarning: '#F4F8F5',
-    danger: '#D92D20',
-    onDanger: '#F4F8F5',
+    onWarning: '#F7F0E4',
+    danger: '#A33B32',
+    onDanger: '#F7F0E4',
     info: '#1D6FCC',
-    onInfo: '#F4F8F5',
+    onInfo: '#F7F0E4',
 
-    // Utility
-    icon: '#5B6B60',
-    iconSelected: '#2E7D32',
-    overlay: 'rgba(20, 32, 26, 0.4)',
-    shadow: 'rgba(20, 32, 26, 0.12)',
+    woodOuter: '#C4A06A',
+    wood: '#8B5E34',
+    woodEdge: '#5C3D22',
+    soil: '#5A4030',
+    plot: '#6E4E3A',
+    plotLine: '#4A3224',
+    plotHover: '#7D5C44',
+    plotLabel: '#E8D5C0',
+
+    icon: '#6B5344',
+    iconSelected: '#3F6B3A',
+    overlay: 'rgba(42, 30, 22, 0.4)',
+    shadow: 'rgba(92, 61, 34, 0.28)',
   },
   dark: {
-    // Text
-    text: '#EAF2E8',
-    textSecondary: '#A5B5A9',
-    textInverse: '#14201A',
+    text: '#F3E6D4',
+    textSecondary: '#C4B4A0',
+    textInverse: '#1A1410',
 
-    // Backgrounds
-    background: '#0E1712',
-    backgroundElement: '#1A241D',
-    backgroundSelected: '#233024',
-    surface: '#17211A',
-    border: '#2A362B',
+    background: '#16110D',
+    backgroundElement: '#241C16',
+    backgroundSelected: '#2E241C',
+    surface: '#1E1813',
+    border: '#8B5E34',
 
-    // Brand — green is the anchor
-    primary: '#5FCB68',
-    primaryLight: '#84DB8B',
-    primaryDark: '#3F9C48',
-    onPrimary: '#0E1712',
+    primary: '#7CB86A',
+    primaryLight: '#9ACC8A',
+    primaryDark: '#5A8A52',
+    onPrimary: '#16110D',
 
-    // Secondary / accent
     secondary: '#C08A55',
-    onSecondary: '#0E1712',
-    accent: '#F5CB3A',
-    onAccent: '#14201A',
-    tint: '#5FCB68',
+    onSecondary: '#16110D',
+    accent: '#C4A06A',
+    onAccent: '#1A1410',
+    tint: '#7CB86A',
 
-    // Status
-    success: '#5FCB68',
-    onSuccess: '#0E1712',
+    success: '#7CB86A',
+    onSuccess: '#16110D',
     warning: '#F0A83B',
-    onWarning: '#14201A',
-    danger: '#F1685E',
-    onDanger: '#14201A',
+    onWarning: '#1A1410',
+    danger: '#E07A72',
+    onDanger: '#1A1410',
     info: '#5B9DEE',
-    onInfo: '#0E1712',
+    onInfo: '#16110D',
 
-    // Utility
-    icon: '#A5B5A9',
-    iconSelected: '#5FCB68',
+    woodOuter: '#8B5E34',
+    wood: '#6B4423',
+    woodEdge: '#C08A55',
+    soil: '#2A1E16',
+    plot: '#3A2C20',
+    plotLine: '#1E1510',
+    plotHover: '#4A3A2A',
+    plotLabel: '#C4B4A0',
+
+    icon: '#C4B4A0',
+    iconSelected: '#7CB86A',
     overlay: 'rgba(0, 0, 0, 0.5)',
-    shadow: 'rgba(0, 0, 0, 0.4)',
+    shadow: 'rgba(0, 0, 0, 0.45)',
   },
 } as const;
 
@@ -126,5 +132,12 @@ export const Spacing = {
   six: 64,
 } as const;
 
-export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0;
 export const MaxContentWidth = 800;
+
+export const Radius = {
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 20,
+  pill: 999,
+} as const;

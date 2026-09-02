@@ -1,63 +1,95 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { OnboardingShell } from '@/components/onboarding/onboarding-shell';
-import { OnboardingTextField } from '@/components/onboarding/onboarding-text-field';
-import { useOnboarding } from '@/context/onboarding';
+import { ThemedText } from '@/components/themed-text';
+import { ThemedView } from '@/components/themed-view';
+import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
 
-export default function OnboardingNameScreen() {
-  const { draft, updateDraft } = useOnboarding();
-  const [firstName, setFirstName] = useState(draft.firstName);
-  const [lastName, setLastName] = useState(draft.lastName);
-  const [showErrors, setShowErrors] = useState(false);
-
-  const firstNameError = !firstName.trim() ? 'Enter your first name.' : null;
-  const lastNameError = !lastName.trim() ? 'Enter your last name.' : null;
-  const canContinue = !firstNameError && !lastNameError;
-
-  function handleContinue() {
-    setShowErrors(true);
-    if (!canContinue) {
-      return;
-    }
-
-    updateDraft({
-      firstName: firstName.trim(),
-      lastName: lastName.trim(),
-    });
-    router.push('/onboarding/username');
-  }
+export default function WelcomeScreen() {
+  const theme = useTheme();
+  const insets = useSafeAreaInsets();
 
   return (
-    <OnboardingShell
-      step={1}
-      title="What should we call you?"
-      subtitle="Your first and last name will be used as your display name for now."
-      onContinue={handleContinue}
-      continueDisabled={!canContinue}>
-      <OnboardingTextField
-        label="First name"
-        value={firstName}
-        onChangeText={setFirstName}
-        placeholder="Avery"
-        autoCapitalize="words"
-        autoComplete="given-name"
-        textContentType="givenName"
-        returnKeyType="next"
-        error={showErrors ? firstNameError : null}
-      />
-      <OnboardingTextField
-        label="Last name"
-        value={lastName}
-        onChangeText={setLastName}
-        placeholder="Green"
-        autoCapitalize="words"
-        autoComplete="family-name"
-        textContentType="familyName"
-        returnKeyType="done"
-        onSubmitEditing={handleContinue}
-        error={showErrors ? lastNameError : null}
-      />
-    </OnboardingShell>
+    <ThemedView style={styles.screen}>
+      <View
+        style={[
+          styles.content,
+          { paddingTop: insets.top + Spacing.six, paddingBottom: insets.bottom + Spacing.four },
+        ]}>
+        <View style={styles.hero}>
+          <ThemedText type="code" style={styles.brand}>
+            Garden Grid
+          </ThemedText>
+          <ThemedText type="title" style={styles.title}>
+            Grow something great
+          </ThemedText>
+          <ThemedText themeColor="textSecondary">
+            Plan, track, and tend your garden — right from your phone.
+          </ThemedText>
+        </View>
+
+        <View style={styles.actions}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.push('/onboarding/name')}
+            style={({ pressed }) => [
+              styles.button,
+              { backgroundColor: theme.primary },
+              pressed && styles.pressed,
+            ]}>
+            <ThemedText type="smallBold" style={{ color: theme.onPrimary }}>
+              Sign up
+            </ThemedText>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.push('/onboarding/sign-in')}
+            style={({ pressed }) => [
+              styles.button,
+              { backgroundColor: theme.surface, borderColor: theme.border, borderWidth: 1 },
+              pressed && styles.pressed,
+            ]}>
+            <ThemedText type="smallBold">Log in</ThemedText>
+          </Pressable>
+        </View>
+      </View>
+    </ThemedView>
   );
 }
+
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+  },
+  content: {
+    flex: 1,
+    width: '100%',
+    maxWidth: MaxContentWidth,
+    alignSelf: 'center',
+    paddingHorizontal: Spacing.four,
+    justifyContent: 'space-between',
+  },
+  hero: {
+    gap: Spacing.two,
+  },
+  brand: {
+    textTransform: 'uppercase',
+  },
+  title: {
+    marginTop: Spacing.two,
+  },
+  actions: {
+    gap: Spacing.two,
+  },
+  button: {
+    minHeight: 52,
+    borderRadius: Spacing.three,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pressed: {
+    opacity: 0.75,
+  },
+});

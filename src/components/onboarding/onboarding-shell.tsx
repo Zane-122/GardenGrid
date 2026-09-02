@@ -26,11 +26,16 @@ type OnboardingShellProps = {
   continueLabel?: string;
   continueDisabled?: boolean;
   continueLoading?: boolean;
+  loadingLabel?: string;
+  /** Defaults to showing a back button on every step past the first. */
+  showBack?: boolean;
+  /** Rendered under the continue button, e.g. the "already have an account?" link. */
+  footer?: ReactNode;
 };
 
 export function OnboardingShell({
   step,
-  totalSteps = 4,
+  totalSteps = 5,
   title,
   subtitle,
   children,
@@ -38,10 +43,13 @@ export function OnboardingShell({
   continueLabel = 'Continue',
   continueDisabled = false,
   continueLoading = false,
+  loadingLabel = 'Checking…',
+  showBack,
+  footer,
 }: OnboardingShellProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const showBack = step > 1;
+  const canGoBack = showBack ?? step > 1;
 
   return (
     <ThemedView style={styles.screen}>
@@ -59,7 +67,7 @@ export function OnboardingShell({
           ]}>
           <View style={styles.header}>
             <View style={styles.headerRow}>
-              {showBack ? (
+              {canGoBack ? (
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Go back"
@@ -85,7 +93,7 @@ export function OnboardingShell({
                       style={[
                         styles.dot,
                         {
-                          backgroundColor: active ? theme.primary : theme.border,
+                          backgroundColor: active ? theme.wood : theme.border,
                           width: index === step - 1 ? 22 : 8,
                         },
                       ]}
@@ -123,14 +131,15 @@ export function OnboardingShell({
             onPress={onContinue}
             style={({ pressed }) => [
               styles.continueButton,
-              { backgroundColor: theme.primary },
+              { backgroundColor: theme.wood, borderColor: theme.woodEdge },
               (continueDisabled || continueLoading) && styles.disabled,
               pressed && !continueDisabled && styles.pressed,
             ]}>
-            <ThemedText type="smallBold" style={{ color: theme.onPrimary }}>
-              {continueLoading ? 'Checking…' : continueLabel}
+            <ThemedText type="smallBold" style={{ color: theme.plotLabel }}>
+              {continueLoading ? loadingLabel : continueLabel}
             </ThemedText>
           </Pressable>
+          {footer ? <View style={styles.footerExtra}>{footer}</View> : null}
         </View>
       </KeyboardAvoidingView>
     </ThemedView>
@@ -199,9 +208,14 @@ const styles = StyleSheet.create({
   },
   continueButton: {
     minHeight: 52,
-    borderRadius: Spacing.three,
+    borderWidth: 1,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  footerExtra: {
+    alignItems: 'center',
+    marginTop: Spacing.three,
   },
   disabled: {
     opacity: 0.4,

@@ -8,7 +8,8 @@
     "scheme": "gardengrid",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "com.aaditthakur.garden-grid"
     },
     "android": {
       "adaptiveIcon": {
@@ -33,7 +34,20 @@
           "imageWidth": 76
         }
       ],
-      "expo-sqlite"
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Garden Grid uses your location to identify plants that grow in your area."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Garden Grid uses your photos to identify plants.",
+          "cameraPermission": "Garden Grid uses your camera to identify plants.",
+          "microphonePermission": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
