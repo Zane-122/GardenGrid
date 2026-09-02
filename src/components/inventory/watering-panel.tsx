@@ -3,6 +3,7 @@ import { StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { Radius, Spacing } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
 import { wateringRange, type PlantBasicInfo } from '@/utils/plants';
 
 const WATERING_STEPS = [
@@ -29,11 +30,12 @@ type WateringPanelProps = {
 };
 
 export function WateringPanel({ watering }: WateringPanelProps) {
+  const theme = useTheme();
   const range = wateringRange(watering);
 
   if (!range) {
     return (
-      <ThemedText style={styles.muted}>No watering information for this plant yet.</ThemedText>
+      <ThemedText themeColor="textSecondary">No watering information for this plant yet.</ThemedText>
     );
   }
 
@@ -41,16 +43,14 @@ export function WateringPanel({ watering }: WateringPanelProps) {
     <>
       <View style={styles.header}>
         <SymbolView
-          tintColor="#1A1A1A"
+          tintColor={theme.wood}
           name={{ ios: 'drop.fill', android: 'water_drop', web: 'water_drop' }}
           size={18}
         />
-        <ThemedText type="smallBold" style={styles.body}>
-          Watering
-        </ThemedText>
+        <ThemedText type="smallBold">Watering</ThemedText>
       </View>
 
-      <ThemedText type="heading" style={[styles.label, styles.body]}>
+      <ThemedText type="heading" style={styles.label}>
         {range.label}
       </ThemedText>
 
@@ -60,9 +60,15 @@ export function WateringPanel({ watering }: WateringPanelProps) {
           return (
             <View key={step.value} style={styles.step}>
               <View
-                style={[styles.bar, { backgroundColor: active ? '#1A1A1A' : '#D9D9D9' }]}
+                style={[
+                  styles.bar,
+                  { backgroundColor: active ? theme.wood : theme.backgroundElement },
+                ]}
               />
-              <ThemedText type="small" style={[styles.caption, active ? styles.body : styles.muted]}>
+              <ThemedText
+                type="small"
+                themeColor={active ? 'text' : 'textSecondary'}
+                style={styles.caption}>
                 {step.label}
               </ThemedText>
             </View>
@@ -70,7 +76,7 @@ export function WateringPanel({ watering }: WateringPanelProps) {
         })}
       </View>
 
-      <ThemedText style={styles.muted}>{wateringHint(range.min, range.max)}</ThemedText>
+      <ThemedText themeColor="textSecondary">{wateringHint(range.min, range.max)}</ThemedText>
     </>
   );
 }
@@ -98,11 +104,5 @@ const styles = StyleSheet.create({
   },
   caption: {
     textAlign: 'center',
-  },
-  body: {
-    color: '#1A1A1A',
-  },
-  muted: {
-    color: '#5C5C5C',
   },
 });

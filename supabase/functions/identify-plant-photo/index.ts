@@ -4,7 +4,9 @@ import {
   BASIC_DETAILS,
   cachePlantInfo,
   corsHeaders,
+  isPlantKingdom,
   json,
+  NOT_A_GARDEN_PLANT_MESSAGE,
   parseCoordinates,
   plantIdFetch,
   requireUser,
@@ -45,6 +47,7 @@ Deno.serve(async (req: Request) => {
       body: JSON.stringify({
         images,
         similar_images: true,
+        suggestion_filter: { classification: 'vascular_plants OR bryophytes' },
         ...(coordinates ?? {}),
       }),
     });
@@ -63,15 +66,29 @@ Deno.serve(async (req: Request) => {
     const suggestions = Array.isArray(identification?.result?.classification?.suggestions)
       ? identification.result.classification.suggestions
       : [];
-    const top = suggestions[0];
+    const top = suggestions.find((suggestion: { details?: Record<string, unknown> }) =>
+      isPlantKingdom(
+        suggestion?.details?.taxonomy && typeof suggestion.details.taxonomy === 'object'
+          ? (suggestion.details.taxonomy as Record<string, unknown>)
+          : null
+      )
+    );
     const plantId = typeof top?.id === 'string' ? top.id : null;
     const scientificName = typeof top?.name === 'string' ? top.name : null;
 
-    if (!plantId) {
-      return json({ error: 'Plant.id did not return a species suggestion' }, 502);
+    if (!plantId || !top) {
+      return json(
+        {
+          error: suggestions.length > 0 ? NOT_A_GARDEN_PLANT_MESSAGE : 'Plant.id did not return a species suggestion',
+        },
+        suggestions.length > 0 ? 400 : 502
+      );
     }
 
     const info = toBasicInfo(plantId, scientificName, top.details ?? {});
+    if (!isPlantKingdom(info.taxonomy)) {
+      return json({ error: NOT_A_GARDEN_PLANT_MESSAGE }, 400);
+    }
     const shouldSave = body.save !== false;
     const result = shouldSave
       ? await saveUserPlant(admin, user.id, info)

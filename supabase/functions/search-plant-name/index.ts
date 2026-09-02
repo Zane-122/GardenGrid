@@ -4,7 +4,9 @@ import {
   BASIC_DETAILS,
   cachePlantInfo,
   corsHeaders,
+  isPlantKingdom,
   json,
+  NOT_A_GARDEN_PLANT_MESSAGE,
   parseCoordinates,
   plantIdFetch,
   requireUser,
@@ -53,13 +55,17 @@ Deno.serve(async (req: Request) => {
       });
       const results = await plantIdFetch(`/kb/plants/name_search?${params.toString()}`);
       const entities = Array.isArray(results?.entities) ? results.entities : [];
-      const cachedImages = await cachedSearchImages(
+      const cachedMeta = await cachedSearchMeta(
         admin,
         entities.map((entity: { entity_name?: unknown }) => entity?.entity_name)
       );
 
       return json({
         entities: entities
+          .filter((entity: Record<string, unknown>) => {
+            const name = typeof entity.entity_name === 'string' ? entity.entity_name : '';
+            return isPlantKingdom(cachedMeta.get(name)?.taxonomy);
+          })
           .map((entity: Record<string, unknown>) => ({
             matched_in: typeof entity.matched_in === 'string' ? entity.matched_in : '',
             matched_in_type: typeof entity.matched_in_type === 'string' ? entity.matched_in_type : '',
@@ -68,7 +74,7 @@ Deno.serve(async (req: Request) => {
             match_length: typeof entity.match_length === 'number' ? entity.match_length : 0,
             entity_name: typeof entity.entity_name === 'string' ? entity.entity_name : '',
             thumbnail:
-              cachedImages.get(typeof entity.entity_name === 'string' ? entity.entity_name : '') ??
+              cachedMeta.get(typeof entity.entity_name === 'string' ? entity.entity_name : '')?.image_url ??
               asSearchThumbnail(entity.thumbnail ?? entity.image) ??
               null,
           }))
@@ -90,6 +96,10 @@ Deno.serve(async (req: Request) => {
     }
 
     const info = toBasicInfo(plantId, scientificName, detail);
+    if (!isPlantKingdom(info.taxonomy)) {
+      await cachePlantInfo(admin, info);
+      return json({ error: NOT_A_GARDEN_PLANT_MESSAGE }, 400);
+    }
     if (body.save === false) {
       const cached = await cachePlantInfo(admin, info);
       return json({
@@ -140,29 +150,32 @@ function asSearchThumbnail(value: unknown): string | null {
   return null;
 }
 
-async function cachedSearchImages(
+async function cachedSearchMeta(
   admin: Awaited<ReturnType<typeof requireUser>>['admin'],
   names: unknown[]
 ) {
   const scientificNames = [
     ...new Set(names.filter((name): name is string => typeof name === 'string' && name.length > 0)),
   ];
-  const images = new Map<string, string>();
+  const meta = new Map<string, { image_url: string | null; taxonomy: Record<string, unknown> | null }>();
 
   if (scientificNames.length === 0) {
-    return images;
+    return meta;
   }
 
   const { data } = await admin
     .from('plant_basic_info')
-    .select('scientific_name, image_url')
+    .select('scientific_name, image_url, taxonomy')
     .in('scientific_name', scientificNames);
 
   for (const row of data ?? []) {
-    if (row.scientific_name && row.image_url) {
-      images.set(row.scientific_name, row.image_url);
+    if (row.scientific_name) {
+      meta.set(row.scientific_name, {
+        image_url: row.image_url ?? null,
+        taxonomy: row.taxonomy && typeof row.taxonomy === 'object' ? row.taxonomy : null,
+      });
     }
   }
 
-  return images;
+  return meta;
 }

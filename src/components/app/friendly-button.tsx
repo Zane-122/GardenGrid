@@ -26,15 +26,15 @@ export function FriendlyButton({
       style={({ pressed }) => [
         styles.button,
         {
-          backgroundColor: primary ? theme.primary : theme.surface,
-          borderColor: primary ? theme.primary : theme.border,
+          backgroundColor: primary ? theme.wood : theme.surface,
+          borderColor: theme.woodEdge,
         },
         pressed && styles.pressed,
         disabled && styles.disabled,
         style,
       ]}
       {...props}>
-      <ThemedText type="smallBold" style={{ color: primary ? theme.onPrimary : theme.text }}>
+      <ThemedText type="smallBold" style={{ color: primary ? theme.plotLabel : theme.text }}>
         {label}
       </ThemedText>
     </Pressable>

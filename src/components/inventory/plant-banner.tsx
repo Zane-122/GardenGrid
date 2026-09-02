@@ -79,7 +79,7 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.four,
   },
   placeholder: {
-    backgroundColor: '#E8E8E8',
+    backgroundColor: '#6E4E3A',
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,

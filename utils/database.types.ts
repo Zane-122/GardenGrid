@@ -9,9 +9,49 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      garden_slots: {
+        Row: {
+          created_at: string
+          id: string
+          plant_id: string
+          slot_index: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          plant_id: string
+          slot_index: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          plant_id?: string
+          slot_index?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'garden_slots_plant_id_fkey'
+            columns: ['plant_id']
+            isOneToOne: true
+            referencedRelation: 'plants'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'garden_slots_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       plant_basic_info: {
         Row: {
           common_names: string[]
+          best_soil_type: string | null
           edible_parts: string[]
           gbif_id: number | null
           image_url: string | null
@@ -27,6 +67,7 @@ export type Database = {
         }
         Insert: {
           common_names?: string[]
+          best_soil_type?: string | null
           edible_parts?: string[]
           gbif_id?: number | null
           image_url?: string | null
@@ -42,6 +83,7 @@ export type Database = {
         }
         Update: {
           common_names?: string[]
+          best_soil_type?: string | null
           edible_parts?: string[]
           gbif_id?: number | null
           image_url?: string | null
@@ -122,7 +164,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      assign_garden_slot: {
+        Args: { target_plant_id: string; target_slot_index: number }
+        Returns: undefined
+      }
+      clear_garden_slot: {
+        Args: { target_slot_index: number }
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never

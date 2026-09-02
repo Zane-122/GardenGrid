@@ -8,7 +8,7 @@ import { FriendlyButton } from '@/components/app/friendly-button';
 import { ThemedText } from '@/components/themed-text';
 import { useAddPlant } from '@/context/add-plant';
 import { useTheme } from '@/hooks/use-theme';
-import { previewPlantByPhoto } from '@/utils/plants';
+import { isPlantKingdom, NOT_A_GARDEN_PLANT_MESSAGE, previewPlantByPhoto } from '@/utils/plants';
 
 export default function AddPhotoScreen() {
   const theme = useTheme();
@@ -66,6 +66,9 @@ export default function AddPhotoScreen() {
       const identified = await previewPlantByPhoto([payload]);
       if (!identified?.info) {
         throw new Error('No plant details came back for that photo');
+      }
+      if (!isPlantKingdom(identified.info.taxonomy)) {
+        throw new Error(NOT_A_GARDEN_PLANT_MESSAGE);
       }
       setPreview({
         info: identified.info,

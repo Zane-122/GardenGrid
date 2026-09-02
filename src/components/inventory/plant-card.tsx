@@ -1,6 +1,7 @@
 import { Image } from 'expo-image';
 import { Pressable, StyleSheet, View } from 'react-native';
 
+import { GardenFrame } from '@/components/app/garden-frame';
 import { ThemedText } from '@/components/themed-text';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -47,7 +48,8 @@ export function PlantCard({ plant, onPress, onRemove }: PlantCardProps) {
   );
 
   return (
-    <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+    <GardenFrame padded={false}>
+      <View style={styles.card}>
       {onPress ? (
         <Pressable
           accessibilityRole="button"
@@ -71,7 +73,8 @@ export function PlantCard({ plant, onPress, onRemove }: PlantCardProps) {
           </ThemedText>
         </Pressable>
       ) : null}
-    </View>
+      </View>
+    </GardenFrame>
   );
 }
 
@@ -79,8 +82,6 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: Radius.md,
     padding: Spacing.three,
   },
   main: {

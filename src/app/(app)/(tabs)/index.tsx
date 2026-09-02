@@ -3,10 +3,11 @@ import { useCallback, useState } from 'react';
 import { Alert, FlatList, Pressable, StyleSheet, View } from 'react-native';
 
 import { FriendlyButton } from '@/components/app/friendly-button';
+import { GardenFrame } from '@/components/app/garden-frame';
 import { PlantCard } from '@/components/inventory/plant-card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { MaxContentWidth, Radius, Spacing } from '@/constants/theme';
+import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/auth';
 import { useOnboarding } from '@/context/onboarding';
 import { useTheme } from '@/hooks/use-theme';
@@ -102,13 +103,13 @@ export default function GardenScreen() {
           onRefresh={() => void loadPlants()}
           ListEmptyComponent={
             loading ? null : (
-              <View style={[styles.empty, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+              <GardenFrame variant="bed" contentStyle={styles.empty}>
                 <ThemedText type="smallBold">No plants yet</ThemedText>
                 <ThemedText themeColor="textSecondary">
                   Add a plant by name or identify one from a photo.
                 </ThemedText>
                 <FriendlyButton label="Add plant" onPress={() => router.push('/add')} />
-              </View>
+              </GardenFrame>
             )
           }
           renderItem={({ item }) => (
@@ -154,8 +155,6 @@ const styles = StyleSheet.create({
   },
   empty: {
     gap: Spacing.three,
-    borderWidth: 1,
-    borderRadius: Radius.md,
     padding: Spacing.four,
   },
   pressed: {

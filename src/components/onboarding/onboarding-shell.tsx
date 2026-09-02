@@ -93,7 +93,7 @@ export function OnboardingShell({
                       style={[
                         styles.dot,
                         {
-                          backgroundColor: active ? theme.primary : theme.border,
+                          backgroundColor: active ? theme.wood : theme.border,
                           width: index === step - 1 ? 22 : 8,
                         },
                       ]}
@@ -131,11 +131,11 @@ export function OnboardingShell({
             onPress={onContinue}
             style={({ pressed }) => [
               styles.continueButton,
-              { backgroundColor: theme.primary },
+              { backgroundColor: theme.wood, borderColor: theme.woodEdge },
               (continueDisabled || continueLoading) && styles.disabled,
               pressed && !continueDisabled && styles.pressed,
             ]}>
-            <ThemedText type="smallBold" style={{ color: theme.onPrimary }}>
+            <ThemedText type="smallBold" style={{ color: theme.plotLabel }}>
               {continueLoading ? loadingLabel : continueLabel}
             </ThemedText>
           </Pressable>
@@ -208,7 +208,8 @@ const styles = StyleSheet.create({
   },
   continueButton: {
     minHeight: 52,
-    borderRadius: Spacing.three,
+    borderWidth: 1,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },

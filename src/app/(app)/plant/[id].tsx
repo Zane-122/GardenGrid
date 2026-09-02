@@ -3,7 +3,9 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
+import { GardenFrame } from '@/components/app/garden-frame';
 import { PlantBanner } from '@/components/inventory/plant-banner';
+import { SoilPanel } from '@/components/inventory/soil-panel';
 import { WateringPanel } from '@/components/inventory/watering-panel';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -69,8 +71,13 @@ export default function PlantDetailScreen() {
           onBack={() => router.back()}
         />
 
-        <View style={styles.pageBody}>
-          <WateringPanel watering={plant?.info?.watering} />
+        <View style={[styles.pageBody, { backgroundColor: theme.background }]}>
+          <GardenFrame variant="bed">
+            <WateringPanel watering={plant?.info?.watering} />
+          </GardenFrame>
+          <GardenFrame variant="bed">
+            <SoilPanel soilType={plant?.info?.best_soil_type} />
+          </GardenFrame>
 
           {error ? (
             <ThemedText type="small" style={{ color: theme.danger }}>
@@ -82,8 +89,12 @@ export default function PlantDetailScreen() {
             <Pressable
               accessibilityRole="button"
               onPress={handleRemove}
-              style={({ pressed }) => [styles.deleteButton, pressed && styles.pressed]}>
-              <ThemedText type="smallBold" style={styles.deleteLabel}>
+              style={({ pressed }) => [
+                styles.deleteButton,
+                { borderColor: theme.woodEdge, backgroundColor: theme.surface },
+                pressed && styles.pressed,
+              ]}>
+              <ThemedText type="smallBold" style={{ color: theme.danger }}>
                 Delete plant
               </ThemedText>
             </Pressable>
@@ -97,7 +108,6 @@ export default function PlantDetailScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
   },
   body: {
     flex: 1,
@@ -109,7 +119,6 @@ const styles = StyleSheet.create({
   pageBody: {
     flexGrow: 1,
     width: '100%',
-    backgroundColor: '#FFFFFF',
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.five,
     paddingBottom: Spacing.five,
@@ -118,14 +127,10 @@ const styles = StyleSheet.create({
   deleteButton: {
     minHeight: 48,
     borderWidth: 1,
-    borderColor: '#1A1A1A',
     borderRadius: Radius.sm,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: Spacing.two,
-  },
-  deleteLabel: {
-    color: '#1A1A1A',
   },
   pressed: {
     opacity: 0.65,

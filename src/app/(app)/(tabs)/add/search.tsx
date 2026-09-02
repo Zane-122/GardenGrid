@@ -11,6 +11,8 @@ import { Radius, Spacing } from '@/constants/theme';
 import { useAddPlant } from '@/context/add-plant';
 import { useTheme } from '@/hooks/use-theme';
 import {
+  isPlantKingdom,
+  NOT_A_GARDEN_PLANT_MESSAGE,
   plantSearchLabels,
   previewPlantByName,
   searchPlantByName,
@@ -66,6 +68,9 @@ export default function AddSearchScreen() {
       if (!result?.info) {
         throw new Error('No plant details came back for that name');
       }
+      if (!isPlantKingdom(result.info.taxonomy)) {
+        throw new Error(NOT_A_GARDEN_PLANT_MESSAGE);
+      }
       setPreview({
         info: result.info,
         fallbackName: labels.title,
@@ -119,7 +124,7 @@ export default function AddSearchScreen() {
             onPress={() => void handleSelectMatch(match)}
             style={({ pressed }) => [
               styles.match,
-              { backgroundColor: theme.surface, borderColor: theme.border },
+              { backgroundColor: theme.surface, borderColor: theme.wood },
               pressed && styles.pressed,
               busy && styles.disabled,
             ]}>
@@ -135,7 +140,7 @@ export default function AddSearchScreen() {
             <View style={styles.matchText}>
               <ThemedText type="smallBold">{labels.title}</ThemedText>
             </View>
-            <ThemedText type="smallBold" style={{ color: theme.primary }}>
+            <ThemedText type="smallBold" style={{ color: theme.wood }}>
               View
             </ThemedText>
           </Pressable>

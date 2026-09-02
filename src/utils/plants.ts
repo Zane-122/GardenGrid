@@ -20,6 +20,7 @@ export type PlantBasicInfo = {
   watering: { min?: number; max?: number } | null;
   propagation_methods: string[];
   edible_parts: string[];
+  best_soil_type: string | null;
   image_url: string | null;
   url: string | null;
   gbif_id: number | null;
@@ -51,6 +52,18 @@ type LocationOptions = {
 };
 
 const WATERING_LABELS = ['', 'dry', 'medium', 'wet'] as const;
+
+export const NOT_A_GARDEN_PLANT_MESSAGE =
+  'Garden Grid only includes plants, not fungi or similar organisms.';
+
+export function isPlantKingdom(taxonomy: PlantBasicInfo['taxonomy'] | undefined) {
+  if (!taxonomy) {
+    return true;
+  }
+
+  const kingdom = String(taxonomy.kingdom ?? '').trim().toLowerCase();
+  return !kingdom || kingdom === 'plantae';
+}
 
 function capitalizePlantName(name: string) {
   const trimmed = name.trim();
@@ -290,13 +303,15 @@ export async function listUserPlants() {
     throw error;
   }
 
-  return (data ?? []).map((row) => ({
-    id: row.id as string,
-    user_id: row.user_id as string,
-    plant_id: row.plant_id as string,
-    created_at: row.created_at as string,
-    info: (Array.isArray(row.info) ? row.info[0] : row.info) as PlantBasicInfo | null,
-  })) satisfies InventoryPlant[];
+  return (data ?? [])
+    .map((row) => ({
+      id: row.id as string,
+      user_id: row.user_id as string,
+      plant_id: row.plant_id as string,
+      created_at: row.created_at as string,
+      info: (Array.isArray(row.info) ? row.info[0] : row.info) as PlantBasicInfo | null,
+    }))
+    .filter((plant) => isPlantKingdom(plant.info?.taxonomy)) satisfies InventoryPlant[];
 }
 
 export async function deleteUserPlant(id: string) {
@@ -369,6 +384,19 @@ export async function confirmAddPlant(plantId: string) {
   }
   if (!user) {
     throw new Error('You need to be signed in to add a plant');
+  }
+
+  const { data: info, error: infoError } = await supabase
+    .from('plant_basic_info')
+    .select('taxonomy')
+    .eq('plant_id', plantId)
+    .maybeSingle();
+
+  if (infoError) {
+    throw infoError;
+  }
+  if (!isPlantKingdom((info?.taxonomy as PlantBasicInfo['taxonomy']) ?? null)) {
+    throw new Error(NOT_A_GARDEN_PLANT_MESSAGE);
   }
 
   const { data, error } = await supabase

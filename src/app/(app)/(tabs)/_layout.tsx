@@ -10,12 +10,12 @@ export default function TabsLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: theme.primary,
+        tabBarActiveTintColor: theme.wood,
         tabBarInactiveTintColor: theme.textSecondary,
         tabBarLabelStyle: { fontWeight: '500', fontSize: 11 },
         tabBarStyle: {
           backgroundColor: theme.surface,
-          borderTopColor: theme.border,
+          borderTopColor: theme.wood,
         },
       }}>
       <Tabs.Screen
@@ -25,6 +25,19 @@ export default function TabsLayout() {
           tabBarIcon: ({ color, size }) => (
             <SymbolView
               name={{ ios: 'leaf.fill', android: 'eco', web: 'eco' }}
+              tintColor={color}
+              size={size}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="grid"
+        options={{
+          title: 'Grid',
+          tabBarIcon: ({ color, size }) => (
+            <SymbolView
+              name={{ ios: 'square.grid.2x2.fill', android: 'grid_view', web: 'grid_view' }}
               tintColor={color}
               size={size}
             />

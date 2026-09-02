@@ -22,7 +22,7 @@ export default function OnboardingThemeScreen() {
       onContinue={handleContinue}>
       <ChoiceCard
         title="Light mode"
-        description="Bright greens on a soft garden background."
+        description="Warm linen and wood, like a garden bed in daylight."
         selected={selected === 'light'}
         onPress={() => updateDraft({ themePreference: 'light' })}
         icon={{ ios: 'sun.max.fill', android: 'light_mode', web: 'light_mode' }}

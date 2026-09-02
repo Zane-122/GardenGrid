@@ -13,7 +13,20 @@ export const BASIC_DETAILS = [
   'edible_parts',
   'watering',
   'propagation_methods',
+  'best_soil_type',
 ].join(',');
+
+export const NOT_A_GARDEN_PLANT_MESSAGE =
+  'Garden Grid only includes plants, not fungi or similar organisms.';
+
+export function isPlantKingdom(taxonomy: Record<string, unknown> | null | undefined) {
+  if (!taxonomy) {
+    return true;
+  }
+
+  const kingdom = String(taxonomy.kingdom ?? '').trim().toLowerCase();
+  return !kingdom || kingdom === 'plantae';
+}
 
 export const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -30,6 +43,7 @@ export type PlantBasicInfoRow = {
   watering: { min?: number; max?: number } | null;
   propagation_methods: string[];
   edible_parts: string[];
+  best_soil_type: string | null;
   image_url: string | null;
   url: string | null;
   gbif_id: number | null;
@@ -98,6 +112,24 @@ function asImageUrl(value: unknown): string | null {
   return null;
 }
 
+function asText(value: unknown): string | null {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+  if (Array.isArray(value)) {
+    const parts = value
+      .map((item) => (typeof item === 'string' ? item.trim() : ''))
+      .filter((item) => item.length > 0);
+    return parts.length > 0 ? parts.join(', ') : null;
+  }
+  if (value && typeof value === 'object') {
+    const record = value as { value?: unknown; en?: unknown };
+    return asText(record.value ?? record.en);
+  }
+  return null;
+}
+
 function asInt(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return value;
@@ -129,6 +161,7 @@ export function toBasicInfo(
         : null,
     propagation_methods: asStringArray(details?.propagation_methods),
     edible_parts: asStringArray(details?.edible_parts),
+    best_soil_type: asText(details?.best_soil_type),
     image_url: asImageUrl(details?.image),
     url: typeof details?.url === 'string' ? details.url : null,
     gbif_id: asInt(details?.gbif_id),
