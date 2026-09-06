@@ -74,6 +74,8 @@ export default function AddPhotoScreen() {
         info: identified.info,
         probability: identified.suggestions?.[0]?.probability ?? null,
         similarImages: identified.similar_images ?? [],
+        photo: payload,
+        source: 'photo',
       });
       router.push('/add/confirm');
     } catch (identifyError) {

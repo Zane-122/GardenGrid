@@ -103,18 +103,21 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          photo_path: string | null
           plant_id: string
           user_id: string
         }
         Insert: {
           created_at?: string
           id?: string
+          photo_path?: string | null
           plant_id: string
           user_id: string
         }
         Update: {
           created_at?: string
           id?: string
+          photo_path?: string | null
           plant_id?: string
           user_id?: string
         }

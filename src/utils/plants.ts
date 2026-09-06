@@ -33,11 +33,43 @@ export type UserPlant = {
   user_id: string;
   plant_id: string;
   created_at: string;
+  photo_path: string | null;
 };
+
+export const PLANT_PHOTOS_BUCKET = 'plant-photos';
+const PLANT_PHOTO_SIGNED_URL_TTL_SECONDS = 60 * 60;
 
 export type InventoryPlant = UserPlant & {
   info: PlantBasicInfo | null;
+  photo_url: string | null;
 };
+
+export function plantImageUrl(
+  plant: Pick<InventoryPlant, 'photo_url'> & { info?: PlantBasicInfo | null }
+) {
+  return plant.photo_url ?? plant.info?.image_url ?? null;
+}
+
+async function signPlantPhotos(paths: string[]) {
+  const unique = [...new Set(paths.filter((path) => path.length > 0))];
+  if (unique.length === 0) {
+    return new Map<string, string>();
+  }
+
+  const { data, error } = await supabase.storage
+    .from(PLANT_PHOTOS_BUCKET)
+    .createSignedUrls(unique, PLANT_PHOTO_SIGNED_URL_TTL_SECONDS);
+
+  if (error || !data) {
+    return new Map<string, string>();
+  }
+
+  return new Map(
+    data
+      .filter((item) => item.path && item.signedUrl && !item.error)
+      .map((item) => [item.path as string, item.signedUrl as string])
+  );
+}
 
 export type PlantSimilarImage = {
   url: string;
@@ -295,7 +327,7 @@ export async function listUserPlants() {
 
   const { data, error } = await supabase
     .from('plants')
-    .select('id, user_id, plant_id, created_at, info:plant_basic_info(*)')
+    .select('id, user_id, plant_id, created_at, photo_path, info:plant_basic_info(*)')
     .eq('user_id', user.id)
     .order('created_at', { ascending: false });
 
@@ -303,15 +335,25 @@ export async function listUserPlants() {
     throw error;
   }
 
-  return (data ?? [])
+  const plants = (data ?? [])
     .map((row) => ({
       id: row.id as string,
       user_id: row.user_id as string,
       plant_id: row.plant_id as string,
       created_at: row.created_at as string,
+      photo_path: (row.photo_path as string | null) ?? null,
       info: (Array.isArray(row.info) ? row.info[0] : row.info) as PlantBasicInfo | null,
     }))
-    .filter((plant) => isPlantKingdom(plant.info?.taxonomy)) satisfies InventoryPlant[];
+    .filter((plant) => isPlantKingdom(plant.info?.taxonomy));
+
+  const signed = await signPlantPhotos(
+    plants.map((plant) => plant.photo_path).filter((path): path is string => Boolean(path))
+  );
+
+  return plants.map((plant) => ({
+    ...plant,
+    photo_url: plant.photo_path ? (signed.get(plant.photo_path) ?? null) : null,
+  })) satisfies InventoryPlant[];
 }
 
 export async function deleteUserPlant(id: string) {
@@ -373,7 +415,24 @@ export async function previewPlantByPhoto(images: string[], options?: LocationOp
   });
 }
 
-export async function confirmAddPlant(plantId: string) {
+export async function confirmAddPlant(plantId: string, options?: { photo?: string }) {
+  if (options?.photo) {
+    const data = await invokeFunction<{
+      added: boolean;
+      plant: UserPlant;
+    }>('identify-plant-photo', {
+      images: [options.photo],
+      plant_id: plantId,
+      save: true,
+    });
+
+    if (!data?.plant) {
+      throw new Error('Could not add that plant');
+    }
+
+    return data.plant;
+  }
+
   const {
     data: { user },
     error: userError,
@@ -402,7 +461,7 @@ export async function confirmAddPlant(plantId: string) {
   const { data, error } = await supabase
     .from('plants')
     .insert({ user_id: user.id, plant_id: plantId })
-    .select('id, user_id, plant_id, created_at')
+    .select('id, user_id, plant_id, created_at, photo_path')
     .single();
 
   if (error) {

@@ -7,6 +7,8 @@ export type PlantPreview = {
   fallbackName?: string;
   probability?: number | null;
   similarImages?: PlantSimilarImage[];
+  photo?: string;
+  source: 'photo' | 'search';
 };
 
 type AddPlantContextValue = {

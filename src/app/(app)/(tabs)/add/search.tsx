@@ -74,6 +74,7 @@ export default function AddSearchScreen() {
       setPreview({
         info: result.info,
         fallbackName: labels.title,
+        source: 'search',
       });
       router.push('/add/confirm');
     } catch (previewError) {

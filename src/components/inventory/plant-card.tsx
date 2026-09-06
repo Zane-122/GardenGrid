@@ -5,7 +5,7 @@ import { GardenFrame } from '@/components/app/garden-frame';
 import { ThemedText } from '@/components/themed-text';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { plantDisplayName, wateringLabel, type InventoryPlant } from '@/utils/plants';
+import { plantDisplayName, plantImageUrl, wateringLabel, type InventoryPlant } from '@/utils/plants';
 
 type PlantCardProps = {
   plant: InventoryPlant;
@@ -18,11 +18,12 @@ export function PlantCard({ plant, onPress, onRemove }: PlantCardProps) {
   const name = plantDisplayName(plant.info);
   const scientificName = plant.info?.scientific_name;
   const watering = wateringLabel(plant.info?.watering);
+  const photoUrl = plantImageUrl(plant);
 
   const details = (
     <>
-      {plant.info?.image_url ? (
-        <Image source={{ uri: plant.info.image_url }} style={styles.image} contentFit="cover" />
+      {photoUrl ? (
+        <Image source={{ uri: photoUrl }} style={styles.image} contentFit="cover" />
       ) : (
         <View style={[styles.image, styles.placeholder, { backgroundColor: theme.backgroundElement }]}>
           <ThemedText type="small" themeColor="textSecondary">

@@ -10,14 +10,16 @@ import {
   parseCoordinates,
   plantIdFetch,
   requireUser,
-  saveUserPlant,
+  saveUserPlantWithPhoto,
   toBasicInfo,
+  type PlantBasicInfoRow,
 } from '../_shared/plants.ts';
 
 type IdentifyBody = {
   images?: string[];
   latitude?: number;
   longitude?: number;
+  plant_id?: string;
   save?: boolean;
 };
 
@@ -42,6 +44,41 @@ Deno.serve(async (req: Request) => {
     }
 
     const coordinates = parseCoordinates(body);
+    const shouldSave = body.save !== false;
+    const taxonId = typeof body.plant_id === 'string' ? body.plant_id.trim() : '';
+
+    // Confirm a photo preview: the taxon is already cached, so skip a second Plant.id call.
+    if (shouldSave && taxonId) {
+      const { data: cached, error: cachedError } = await admin
+        .from('plant_basic_info')
+        .select('*')
+        .eq('plant_id', taxonId)
+        .maybeSingle();
+
+      if (cachedError) {
+        return json({ error: `Failed to load plant details: ${cachedError.message}` }, 500);
+      }
+      if (!cached) {
+        return json({ error: 'Plant details are not available to confirm' }, 400);
+      }
+
+      const cachedInfo = cached as PlantBasicInfoRow;
+      if (!isPlantKingdom(cachedInfo.taxonomy)) {
+        return json({ error: NOT_A_GARDEN_PLANT_MESSAGE }, 400);
+      }
+
+      const { updated_at: _updatedAt, ...info } = cachedInfo;
+      const result = await saveUserPlantWithPhoto(admin, user.id, info, images[0]);
+
+      return json({
+        added: true,
+        plant: result.plant,
+        info: result.info,
+        photo: result.photo,
+        location: coordinates,
+      });
+    }
+
     const identification = await plantIdFetch(`/identification?details=${BASIC_DETAILS}&language=en`, {
       method: 'POST',
       body: JSON.stringify({
@@ -89,15 +126,15 @@ Deno.serve(async (req: Request) => {
     if (!isPlantKingdom(info.taxonomy)) {
       return json({ error: NOT_A_GARDEN_PLANT_MESSAGE }, 400);
     }
-    const shouldSave = body.save !== false;
     const result = shouldSave
-      ? await saveUserPlant(admin, user.id, info)
-      : { plant: null, info: await cachePlantInfo(admin, info) };
+      ? await saveUserPlantWithPhoto(admin, user.id, info, images[0])
+      : { plant: null, info: await cachePlantInfo(admin, info), photo: null };
 
     return json({
       added: shouldSave,
       plant: result.plant,
       info: result.info,
+      photo: result.photo ?? null,
       location: coordinates,
       is_plant: isPlant ?? null,
       identification_access_token: identification?.access_token ?? null,

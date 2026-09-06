@@ -51,7 +51,10 @@ export default function AddConfirmScreen() {
     setConfirming(true);
     setError(null);
     try {
-      await confirmAddPlant(preview.info.plant_id);
+      if (preview.source === 'photo' && !preview.photo) {
+        throw new Error('That photo is no longer available. Take it again.');
+      }
+      await confirmAddPlant(preview.info.plant_id, { photo: preview.photo });
       setPreview(null);
       router.replace('/');
     } catch (confirmError) {

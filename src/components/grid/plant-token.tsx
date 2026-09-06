@@ -4,7 +4,7 @@ import { StyleSheet, View } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { plantDisplayName, type InventoryPlant } from '@/utils/plants';
+import { plantDisplayName, plantImageUrl, type InventoryPlant } from '@/utils/plants';
 
 type PlantTokenProps = {
   plant: InventoryPlant;
@@ -17,9 +17,10 @@ export function PlantToken({ plant, compact = false, placed = false, selected = 
   const theme = useTheme();
   const name = plantDisplayName(plant.info);
 
-  const image = plant.info?.image_url ? (
+  const photoUrl = plantImageUrl(plant);
+  const image = photoUrl ? (
     <Image
-      source={{ uri: plant.info.image_url }}
+      source={{ uri: photoUrl }}
       style={compact ? styles.compactImage : styles.slotImage}
       contentFit="cover"
       pointerEvents="none"

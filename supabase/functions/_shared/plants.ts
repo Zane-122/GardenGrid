@@ -264,3 +264,94 @@ export async function saveUserPlant(
 
   return { plant, info: basicInfo };
 }
+
+export const PLANT_PHOTOS_BUCKET = 'plant-photos';
+
+function decodeBase64(payload: string): Uint8Array {
+  const binary = atob(payload);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+}
+
+export async function decodePlantImage(image: string): Promise<{
+  bytes: Uint8Array;
+  contentType: string;
+}> {
+  const dataUrl = image.match(/^data:([^;]+);base64,(.+)$/s);
+  if (dataUrl) {
+    return {
+      bytes: decodeBase64(dataUrl[2]),
+      contentType: dataUrl[1] || 'image/jpeg',
+    };
+  }
+
+  if (/^https?:\/\//i.test(image)) {
+    const response = await fetch(image);
+    if (!response.ok) {
+      throw json({ error: 'Could not download the plant photo' }, 400);
+    }
+
+    return {
+      bytes: new Uint8Array(await response.arrayBuffer()),
+      contentType: response.headers.get('content-type')?.split(';')[0] || 'image/jpeg',
+    };
+  }
+
+  try {
+    return {
+      bytes: decodeBase64(image.replace(/\s/g, '')),
+      contentType: 'image/jpeg',
+    };
+  } catch {
+    throw json({ error: 'Could not decode the plant photo' }, 400);
+  }
+}
+
+export async function uploadPlantPhoto(
+  admin: SupabaseClient,
+  plantInstanceId: string,
+  image: string
+) {
+  const { bytes, contentType } = await decodePlantImage(image);
+  const { error } = await admin.storage.from(PLANT_PHOTOS_BUCKET).upload(plantInstanceId, bytes, {
+    contentType,
+    upsert: true,
+  });
+
+  if (error) {
+    throw json({ error: `Failed to store plant photo: ${error.message}` }, 500);
+  }
+
+  return { bucket: PLANT_PHOTOS_BUCKET, path: plantInstanceId };
+}
+
+export async function saveUserPlantWithPhoto(
+  admin: SupabaseClient,
+  userId: string,
+  info: Omit<PlantBasicInfoRow, 'updated_at'>,
+  image: string
+) {
+  const result = await saveUserPlant(admin, userId, info);
+
+  try {
+    const photo = await uploadPlantPhoto(admin, result.plant.id, image);
+    const { data: plant, error } = await admin
+      .from('plants')
+      .update({ photo_path: photo.path })
+      .eq('id', result.plant.id)
+      .select()
+      .single();
+
+    if (error) {
+      throw json({ error: `Failed to link plant photo: ${error.message}` }, 500);
+    }
+
+    return { plant, info: result.info, photo };
+  } catch (error) {
+    await admin.from('plants').delete().eq('id', result.plant.id);
+    throw error;
+  }
+}

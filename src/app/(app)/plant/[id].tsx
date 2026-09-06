@@ -11,7 +11,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { deleteUserPlant, listUserPlants, plantDisplayName, type InventoryPlant } from '@/utils/plants';
+import { deleteUserPlant, listUserPlants, plantDisplayName, plantImageUrl, type InventoryPlant } from '@/utils/plants';
 
 export default function PlantDetailScreen() {
   const theme = useTheme();
@@ -65,7 +65,7 @@ export default function PlantDetailScreen() {
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}>
         <PlantBanner
-          photoUrl={plant?.info?.image_url}
+          photoUrl={plant ? plantImageUrl(plant) : null}
           name={name}
           scientificName={scientificName}
           onBack={() => router.back()}
