@@ -5,6 +5,7 @@ alter table public.plant_basic_info
   add column if not exists x0 double precision,
   add column if not exists xg double precision,
   add column if not exists kg double precision,
+  add column if not exists ks double precision,
   add column if not exists xs double precision,
   add column if not exists f double precision,
   add column if not exists r double precision,
@@ -22,6 +23,7 @@ comment on column public.plant_basic_info.x0 is 'Day of maximum growth rate (inf
 comment on column public.plant_basic_info.xg is 'Germination/emergence midpoint day, used in gate term G(x).';
 comment on column public.plant_basic_info.kg is 'Germination steepness constant, used in gate term G(x).';
 comment on column public.plant_basic_info.xs is 'Mode-dependent: senescence onset day (annual_bounded) or residual-growth start day (woody_residual). Unused in cyclical.';
+comment on column public.plant_basic_info.ks is 'annual_bounded only: steepness constant for the senescence/stabilization term, separate from the main growth steepness k.';
 comment on column public.plant_basic_info.f is 'annual_bounded only: long-term canopy retention floor as a fraction of L.';
 comment on column public.plant_basic_info.r is 'woody_residual only: residual growth rate (cm²/day) added after xs.';
 comment on column public.plant_basic_info.cycle_length is 'cyclical only: days per growth cycle (e.g. ~365 for annual die-back perennials).';
