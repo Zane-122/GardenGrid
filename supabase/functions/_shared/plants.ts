@@ -1,5 +1,8 @@
 import { createClient, type SupabaseClient, type User } from 'jsr:@supabase/supabase-js@2';
 
+import type { GrowthMode } from './growth-curve.ts';
+import { generateGrowthParams } from './growth-params-llm.ts';
+
 export const PLANT_ID_BASE = 'https://plant.id/api/v3';
 
 export const BASIC_DETAILS = [
@@ -49,6 +52,25 @@ export type PlantBasicInfoRow = {
   gbif_id: number | null;
   inaturalist_id: number | null;
   updated_at: string;
+
+  // Growth-curve params (see growth-curve.ts / growth-params-llm.ts).
+  // Populated lazily by cachePlantInfo() via an LLM call, so all nullable.
+  growth_mode: GrowthMode | null;
+  l: number | null;
+  k: number | null;
+  x0: number | null;
+  xg: number | null;
+  kg: number | null;
+  ks: number | null;
+  xs: number | null;
+  f: number | null;
+  r: number | null;
+  cycle_length: number | null;
+  b_base: number | null;
+  l_season: number | null;
+  carbon_fraction: number | null;
+  confidence: number | null;
+  params_generated_at: string | null;
 };
 
 export function json(body: unknown, status = 200) {
@@ -242,7 +264,33 @@ export async function cachePlantInfo(
     throw json({ error: `Failed to save plant_basic_info: ${infoError.message}` }, 500);
   }
 
-  return basicInfo as PlantBasicInfoRow;
+  const row = basicInfo as PlantBasicInfoRow;
+
+  // Growth-curve params are generated lazily, once per species: if this row
+  // doesn't have them yet, ask the LLM and persist the result. Best-effort —
+  // generateGrowthParams() never throws, so a failed/unavailable call just
+  // leaves the row as-is and the plant-saving flow continues unaffected.
+  if (!row.growth_mode || !row.params_generated_at) {
+    const generated = await generateGrowthParams(row.scientific_name, row.common_names?.[0] ?? null);
+
+    if (generated) {
+      const { data: updated, error: updateError } = await admin
+        .from('plant_basic_info')
+        .update({ ...generated, params_generated_at: new Date().toISOString() })
+        .eq('plant_id', row.plant_id)
+        .select()
+        .single();
+
+      if (!updateError && updated) {
+        return updated as PlantBasicInfoRow;
+      }
+      if (updateError) {
+        console.error(`Failed to save growth params for ${row.plant_id}: ${updateError.message}`);
+      }
+    }
+  }
+
+  return row;
 }
 
 export async function saveUserPlant(
