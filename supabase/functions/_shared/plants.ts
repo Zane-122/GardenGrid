@@ -247,6 +247,38 @@ export async function requireUser(req: Request): Promise<{ user: User; admin: Su
   return { user: data.user, admin };
 }
 
+// Growth-curve params are generated lazily, once per species: if a row
+// doesn't have them yet, ask the LLM and persist the result. Best-effort —
+// generateGrowthParams() never throws, so a failed/unavailable call just
+// returns the row as-is and callers continue unaffected.
+export async function ensureGrowthParams(
+  admin: SupabaseClient,
+  row: PlantBasicInfoRow
+): Promise<PlantBasicInfoRow> {
+  if (row.growth_mode && row.params_generated_at) {
+    return row;
+  }
+
+  const generated = await generateGrowthParams(row.scientific_name, row.common_names?.[0] ?? null);
+  if (!generated) {
+    return row;
+  }
+
+  const { data: updated, error: updateError } = await admin
+    .from('plant_basic_info')
+    .update({ ...generated, params_generated_at: new Date().toISOString() })
+    .eq('plant_id', row.plant_id)
+    .select()
+    .single();
+
+  if (updateError) {
+    console.error(`Failed to save growth params for ${row.plant_id}: ${updateError.message}`);
+    return row;
+  }
+
+  return updated as PlantBasicInfoRow;
+}
+
 export async function cachePlantInfo(
   admin: SupabaseClient,
   info: Omit<PlantBasicInfoRow, 'updated_at'>
@@ -264,33 +296,7 @@ export async function cachePlantInfo(
     throw json({ error: `Failed to save plant_basic_info: ${infoError.message}` }, 500);
   }
 
-  const row = basicInfo as PlantBasicInfoRow;
-
-  // Growth-curve params are generated lazily, once per species: if this row
-  // doesn't have them yet, ask the LLM and persist the result. Best-effort —
-  // generateGrowthParams() never throws, so a failed/unavailable call just
-  // leaves the row as-is and the plant-saving flow continues unaffected.
-  if (!row.growth_mode || !row.params_generated_at) {
-    const generated = await generateGrowthParams(row.scientific_name, row.common_names?.[0] ?? null);
-
-    if (generated) {
-      const { data: updated, error: updateError } = await admin
-        .from('plant_basic_info')
-        .update({ ...generated, params_generated_at: new Date().toISOString() })
-        .eq('plant_id', row.plant_id)
-        .select()
-        .single();
-
-      if (!updateError && updated) {
-        return updated as PlantBasicInfoRow;
-      }
-      if (updateError) {
-        console.error(`Failed to save growth params for ${row.plant_id}: ${updateError.message}`);
-      }
-    }
-  }
-
-  return row;
+  return ensureGrowthParams(admin, basicInfo as PlantBasicInfoRow);
 }
 
 export async function saveUserPlant(

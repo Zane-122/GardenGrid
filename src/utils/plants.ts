@@ -34,6 +34,7 @@ export type UserPlant = {
   plant_id: string;
   created_at: string;
   photo_path: string | null;
+  last_recalibrated_at: string | null;
 };
 
 export const PLANT_PHOTOS_BUCKET = 'plant-photos';
@@ -327,7 +328,7 @@ export async function listUserPlants() {
 
   const { data, error } = await supabase
     .from('plants')
-    .select('id, user_id, plant_id, created_at, photo_path, info:plant_basic_info(*)')
+    .select('id, user_id, plant_id, created_at, photo_path, last_recalibrated_at, info:plant_basic_info(*)')
     .eq('user_id', user.id)
     .order('created_at', { ascending: false });
 
@@ -342,6 +343,7 @@ export async function listUserPlants() {
       plant_id: row.plant_id as string,
       created_at: row.created_at as string,
       photo_path: (row.photo_path as string | null) ?? null,
+      last_recalibrated_at: (row.last_recalibrated_at as string | null) ?? null,
       info: (Array.isArray(row.info) ? row.info[0] : row.info) as PlantBasicInfo | null,
     }))
     .filter((plant) => isPlantKingdom(plant.info?.taxonomy));
@@ -412,6 +414,13 @@ export async function previewPlantByPhoto(images: string[], options?: LocationOp
     images,
     save: false,
     ...coordinates,
+  });
+}
+
+export async function updatePlantPhoto(plantInstanceId: string, photo: string) {
+  return invokeFunction<unknown>('update-plant-photo', {
+    plant_id: plantInstanceId,
+    photo,
   });
 }
 

@@ -1,4 +1,5 @@
 import type { GrowthCurveParams, GrowthMode } from './growth-curve.ts';
+import { lowercaseKeys } from './json-utils.ts';
 
 // Generates growth-curve parameters (see growth-curve.ts) for a species by
 // asking Gemini, then validates/clamps the response against known-sane
@@ -17,14 +18,6 @@ const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models
 const DEFAULT_GEMINI_MODEL = 'gemini-3.1-flash-lite';
 
 const VALID_GROWTH_MODES: GrowthMode[] = ['annual_bounded', 'woody_residual', 'cyclical'];
-
-function lowercaseKeys(obj: Record<string, unknown>): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
-  for (const key of Object.keys(obj)) {
-    result[key.toLowerCase()] = obj[key];
-  }
-  return result;
-}
 
 function buildPrompt(scientificName: string | null, commonName: string | null): string {
   const species = scientificName?.trim() || 'Unknown';
