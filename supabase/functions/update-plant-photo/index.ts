@@ -10,6 +10,8 @@ import {
   type PlantBasicInfoRow,
 } from '../_shared/plants.ts';
 import { analyzePlantHealth } from '../_shared/health-analysis-llm.ts';
+import { generateGrowthParamsFromPhoto } from '../_shared/growth-params-from-photo-llm.ts';
+import type { GeneratedGrowthParams } from '../_shared/growth-params-llm.ts';
 import { solveXForFullness, type GrowthCurveParams } from '../_shared/growth-curve.ts';
 
 type UpdatePlantPhotoBody = {
@@ -48,6 +50,65 @@ function toGrowthCurveParams(info: PlantBasicInfoRow): GrowthCurveParams | null 
     b_base: info.b_base,
     l_season: info.l_season,
   };
+}
+
+type GrowthParamFields = {
+  growth_mode: GrowthCurveParams['growth_mode'] | null;
+  l: number | null;
+  k: number | null;
+  x0: number | null;
+  xg: number | null;
+  kg: number | null;
+  ks: number | null;
+  xs: number | null;
+  f: number | null;
+  r: number | null;
+  cycle_length: number | null;
+  b_base: number | null;
+  l_season: number | null;
+  carbon_fraction: number | null;
+};
+
+// plant_health_info rows don't store a confidence value (it's not something
+// we ever act on for a past observation), so a fallback is used when
+// building a reference object from one.
+function toGeneratedGrowthParams(
+  fields: GrowthParamFields,
+  confidence: number
+): GeneratedGrowthParams | null {
+  if (
+    !fields.growth_mode ||
+    fields.l == null ||
+    fields.k == null ||
+    fields.x0 == null ||
+    fields.xg == null ||
+    fields.kg == null ||
+    fields.carbon_fraction == null
+  ) {
+    return null;
+  }
+
+  return {
+    growth_mode: fields.growth_mode,
+    l: fields.l,
+    k: fields.k,
+    x0: fields.x0,
+    xg: fields.xg,
+    kg: fields.kg,
+    ks: fields.ks,
+    xs: fields.xs,
+    f: fields.f,
+    r: fields.r,
+    cycle_length: fields.cycle_length,
+    b_base: fields.b_base,
+    l_season: fields.l_season,
+    carbon_fraction: fields.carbon_fraction,
+    confidence,
+  };
+}
+
+function daysBetween(earlier: string, later: Date): number {
+  return Math.round((later.getTime() - new Date(earlier).getTime()) / 86_400_000);
 }
 
 function encodeBase64(bytes: Uint8Array): string {
@@ -125,6 +186,53 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    const now = new Date();
+
+    const { data: lastHealthInfo, error: lastHealthInfoError } = await admin
+      .from('plant_health_info')
+      .select(
+        'observed_at, growth_mode, l, k, x0, xg, kg, xs, ks, f, r, cycle_length, b_base, l_season, carbon_fraction'
+      )
+      .eq('plant_id', plant.id)
+      .order('observed_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (lastHealthInfoError) {
+      return json({ error: `Failed to load prior plant health info: ${lastHealthInfoError.message}` }, 500);
+    }
+
+    let previousParams: GeneratedGrowthParams | null = null;
+    let daysSinceLastObservation: number | null = null;
+    let isRealPriorObservation = false;
+
+    if (lastHealthInfo?.growth_mode) {
+      previousParams = toGeneratedGrowthParams(lastHealthInfo, 0.5);
+      if (previousParams) {
+        daysSinceLastObservation = daysBetween(lastHealthInfo.observed_at, now);
+        isRealPriorObservation = true;
+      }
+    }
+
+    if (!previousParams && basicInfo.growth_mode) {
+      previousParams = toGeneratedGrowthParams(basicInfo, basicInfo.confidence ?? 0.5);
+      daysSinceLastObservation = null;
+      isRealPriorObservation = false;
+    }
+
+    const plantAgeInDays = daysBetween(plant.created_at, now);
+
+    const photoGrowthParams = await generateGrowthParamsFromPhoto(
+      imageBase64,
+      contentType,
+      basicInfo.scientific_name,
+      basicInfo.common_names?.[0] ?? null,
+      previousParams,
+      daysSinceLastObservation,
+      plantAgeInDays,
+      isRealPriorObservation
+    );
+
     let growthParams = toGrowthCurveParams(basicInfo);
 
     // Growth params are normally generated when the species is first cached
@@ -141,7 +249,7 @@ Deno.serve(async (req: Request) => {
     const plantUpdate: Record<string, unknown> = { photo_path: photoResult.path };
     if (resolvedXPosition != null) {
       plantUpdate.current_x_position = resolvedXPosition;
-      plantUpdate.last_recalibrated_at = new Date().toISOString();
+      plantUpdate.last_recalibrated_at = now.toISOString();
     }
 
     const { data: updatedPlant, error: updateError } = await admin
@@ -161,10 +269,28 @@ Deno.serve(async (req: Request) => {
       .insert({
         plant_id: plant.id,
         photo_path: photoResult.path,
-        observed_at: new Date().toISOString(),
+        observed_at: now.toISOString(),
         estimated_fullness_pct: health.fullness_pct,
         estimated_health_score: health.health_score,
         resolved_x_position: resolvedXPosition,
+        ...(photoGrowthParams
+          ? {
+              growth_mode: photoGrowthParams.growth_mode,
+              l: photoGrowthParams.l,
+              k: photoGrowthParams.k,
+              x0: photoGrowthParams.x0,
+              xg: photoGrowthParams.xg,
+              kg: photoGrowthParams.kg,
+              xs: photoGrowthParams.xs,
+              ks: photoGrowthParams.ks,
+              f: photoGrowthParams.f,
+              r: photoGrowthParams.r,
+              cycle_length: photoGrowthParams.cycle_length,
+              b_base: photoGrowthParams.b_base,
+              l_season: photoGrowthParams.l_season,
+              carbon_fraction: photoGrowthParams.carbon_fraction,
+            }
+          : {}),
       })
       .select()
       .single();

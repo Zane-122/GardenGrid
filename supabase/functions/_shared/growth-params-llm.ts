@@ -134,7 +134,7 @@ function clampOrDefault(value: unknown, min: number, max: number, defaultValue: 
   return Math.min(max, Math.max(min, num));
 }
 
-function validateGrowthParams(raw: unknown): GeneratedGrowthParams | null {
+export function validateGrowthParams(raw: unknown): GeneratedGrowthParams | null {
   if (!raw || typeof raw !== 'object') {
     return null;
   }
