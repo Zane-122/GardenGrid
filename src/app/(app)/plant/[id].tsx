@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { GardenFrame } from '@/components/app/garden-frame';
+import { GrowthChart } from '@/components/inventory/growth-chart';
 import { PlantBanner } from '@/components/inventory/plant-banner';
 import { SoilPanel } from '@/components/inventory/soil-panel';
 import { WateringPanel } from '@/components/inventory/watering-panel';
@@ -14,11 +15,14 @@ import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import {
   deleteUserPlant,
+  latestPlantGrowthObservation,
   listUserPlants,
   plantDisplayName,
+  plantGrowthCurveParams,
   plantImageUrl,
   updatePlantPhoto,
   type InventoryPlant,
+  type PlantGrowthObservation,
 } from '@/utils/plants';
 
 function formatLastUpdated(lastRecalibratedAt: string | null | undefined) {
@@ -41,6 +45,7 @@ export default function PlantDetailScreen() {
   const theme = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [plant, setPlant] = useState<InventoryPlant | null>(null);
+  const [observation, setObservation] = useState<PlantGrowthObservation | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [updatingPhoto, setUpdatingPhoto] = useState(false);
 
@@ -48,7 +53,9 @@ export default function PlantDetailScreen() {
     void (async () => {
       try {
         const plants = await listUserPlants();
-        setPlant(plants.find((item) => item.id === id) ?? null);
+        const found = plants.find((item) => item.id === id) ?? null;
+        setPlant(found);
+        setObservation(found ? await latestPlantGrowthObservation(found.id) : null);
       } catch (loadError) {
         setError(loadError instanceof Error ? loadError.message : 'Could not load that plant');
       }
@@ -58,6 +65,9 @@ export default function PlantDetailScreen() {
   const name = plantDisplayName(plant?.info);
   const scientificName = plant?.info?.scientific_name;
   const lastUpdatedLabel = formatLastUpdated(plant?.last_recalibrated_at);
+  // Prefer this plant's own photo-recalibrated curve; fall back to the
+  // species' base params if it doesn't have one (or hasn't been photographed yet).
+  const growthParams = observation?.params ?? plantGrowthCurveParams(plant?.info);
 
   function handleRemove() {
     if (!plant) {
@@ -122,7 +132,9 @@ export default function PlantDetailScreen() {
       const data = await updatePlantPhoto(plant.id, payload);
       console.log('update-plant-photo response:', JSON.stringify(data, null, 2));
       const plants = await listUserPlants();
-      setPlant(plants.find((item) => item.id === plant.id) ?? null);
+      const updated = plants.find((item) => item.id === plant.id) ?? null;
+      setPlant(updated);
+      setObservation(updated ? await latestPlantGrowthObservation(updated.id) : null);
     } catch (updateError) {
       console.log('update-plant-photo error:', updateError);
       Alert.alert(
@@ -149,6 +161,9 @@ export default function PlantDetailScreen() {
         />
 
         <View style={[styles.pageBody, { backgroundColor: theme.background }]}>
+          <GardenFrame variant="bed">
+            <GrowthChart params={growthParams} createdAt={plant?.created_at} ageAnchor={observation?.ageAnchor ?? null} />
+          </GardenFrame>
           <GardenFrame variant="bed">
             <WateringPanel watering={plant?.info?.watering} />
           </GardenFrame>

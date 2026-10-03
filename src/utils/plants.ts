@@ -1,5 +1,6 @@
 import { getGardenCoordinates } from '@/utils/location';
 import { supabase } from '@/utils/supabase';
+import type { GrowthCurveParams } from '@/utils/growth-curve';
 
 export type PlantNameMatch = {
   matched_in: string;
@@ -26,6 +27,22 @@ export type PlantBasicInfo = {
   gbif_id: number | null;
   inaturalist_id: number | null;
   updated_at: string;
+
+  // Growth-curve params (see equation.md / growth-curve.ts), populated
+  // lazily by the backend. All nullable until generated.
+  growth_mode: GrowthCurveParams['growth_mode'] | null;
+  l: number | null;
+  k: number | null;
+  x0: number | null;
+  xg: number | null;
+  kg: number | null;
+  ks: number | null;
+  xs: number | null;
+  f: number | null;
+  r: number | null;
+  cycle_length: number | null;
+  b_base: number | null;
+  l_season: number | null;
 };
 
 export type UserPlant = {
@@ -35,7 +52,113 @@ export type UserPlant = {
   created_at: string;
   photo_path: string | null;
   last_recalibrated_at: string | null;
+  current_x_position: number | null;
 };
+
+type GrowthParamFields = {
+  growth_mode: GrowthCurveParams['growth_mode'] | null;
+  l: number | null;
+  k: number | null;
+  x0: number | null;
+  xg: number | null;
+  kg: number | null;
+  ks: number | null;
+  xs: number | null;
+  f: number | null;
+  r: number | null;
+  cycle_length: number | null;
+  b_base: number | null;
+  l_season: number | null;
+};
+
+function toGrowthCurveParams(fields: GrowthParamFields | null | undefined): GrowthCurveParams | null {
+  if (
+    !fields?.growth_mode ||
+    fields.l == null ||
+    fields.k == null ||
+    fields.x0 == null ||
+    fields.xg == null ||
+    fields.kg == null
+  ) {
+    return null;
+  }
+
+  return {
+    growth_mode: fields.growth_mode,
+    l: fields.l,
+    k: fields.k,
+    x0: fields.x0,
+    xg: fields.xg,
+    kg: fields.kg,
+    ks: fields.ks,
+    xs: fields.xs,
+    f: fields.f,
+    r: fields.r,
+    cycle_length: fields.cycle_length,
+    b_base: fields.b_base,
+    l_season: fields.l_season,
+  };
+}
+
+/** Extracts this plant's species growth-curve params, if fully generated. */
+export function plantGrowthCurveParams(info: PlantBasicInfo | null | undefined): GrowthCurveParams | null {
+  return toGrowthCurveParams(info);
+}
+
+const GROWTH_PARAM_COLUMNS = 'growth_mode, l, k, x0, xg, kg, xs, ks, f, r, cycle_length, b_base, l_season';
+
+export type PlantAgeAnchor = {
+  /** When this observation's age estimate was made. */
+  observedAt: string;
+  /** The AI's estimated x-position (age, in days) on the curve at observedAt. */
+  resolvedXPosition: number;
+};
+
+export type PlantGrowthObservation = {
+  /** Recalibrated growth-curve params from this observation's photo, if any. */
+  params: GrowthCurveParams | null;
+  /** The plant's age anchor as of this observation, if it was resolved. */
+  ageAnchor: PlantAgeAnchor | null;
+};
+
+/**
+ * This plant's most recent photo-based observation (plant_health_info), if
+ * one exists.
+ *
+ * The AI only ever estimates the plant's age (as an x-position on the
+ * curve) at the moment a photo is uploaded — it's never re-estimated just
+ * from the passage of time. Between uploads, callers should advance that
+ * estimate by real elapsed time (now - ageAnchor.observedAt +
+ * ageAnchor.resolvedXPosition) rather than asking the AI again.
+ *
+ * Callers should fall back to the species' base params (plantGrowthCurveParams
+ * on plant_basic_info) when `params` is null — a plant with no photo yet, or
+ * whose most recent photo failed to recalibrate, still has species params.
+ */
+export async function latestPlantGrowthObservation(plantInstanceId: string): Promise<PlantGrowthObservation | null> {
+  const { data, error } = await supabase
+    .from('plant_health_info')
+    .select(`observed_at, resolved_x_position, ${GROWTH_PARAM_COLUMNS}`)
+    .eq('plant_id', plantInstanceId)
+    .order('observed_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+  if (!data) {
+    return null;
+  }
+
+  const observedAt = data.observed_at as string;
+  const resolvedXPosition = data.resolved_x_position as number | null;
+
+  return {
+    params: toGrowthCurveParams(data as GrowthParamFields),
+    ageAnchor: resolvedXPosition != null ? { observedAt, resolvedXPosition } : null,
+  };
+}
 
 export const PLANT_PHOTOS_BUCKET = 'plant-photos';
 const PLANT_PHOTO_SIGNED_URL_TTL_SECONDS = 60 * 60;
@@ -328,7 +451,9 @@ export async function listUserPlants() {
 
   const { data, error } = await supabase
     .from('plants')
-    .select('id, user_id, plant_id, created_at, photo_path, last_recalibrated_at, info:plant_basic_info(*)')
+    .select(
+      'id, user_id, plant_id, created_at, photo_path, last_recalibrated_at, current_x_position, info:plant_basic_info(*)'
+    )
     .eq('user_id', user.id)
     .order('created_at', { ascending: false });
 
@@ -344,6 +469,7 @@ export async function listUserPlants() {
       created_at: row.created_at as string,
       photo_path: (row.photo_path as string | null) ?? null,
       last_recalibrated_at: (row.last_recalibrated_at as string | null) ?? null,
+      current_x_position: (row.current_x_position as number | null) ?? null,
       info: (Array.isArray(row.info) ? row.info[0] : row.info) as PlantBasicInfo | null,
     }))
     .filter((plant) => isPlantKingdom(plant.info?.taxonomy));
