@@ -55,3 +55,4 @@ create policy "Users can delete their own plants"
 
 grant select on table public.plant_basic_info to authenticated, service_role;
 grant select, insert, delete on table public.plants to authenticated, service_role;
+npx supabase db push
