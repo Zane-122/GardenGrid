@@ -22,7 +22,7 @@ const PARAM_SCHEMA = `Classify this plant into exactly one growth_mode:
 Then estimate the parameters of the plant's growth curve, using both general species knowledge AND what you observe in this photo (current apparent size, fullness, health). All timing parameters (x0, xg, xs) are days on the plant's own curve timeline, where x=0 is the start of the curve, NOT days from today. Keep them on the same timeline as the previous parameters you are given.
 
 Always required:
-- L: mature/peak leaf area in cm², adjusted for what you observe (e.g. if the plant looks stunted or damaged, this may be lower than a typical healthy specimen's peak)
+- L: the plant's MATURE peak leaf area in cm² (the ceiling the curve approaches when fully grown), NOT its current size. How big the plant is right now is expressed by where it sits on the curve (the timing parameters), never by lowering L. Only change L from the reference value if the photo clearly shows this is a much smaller or larger mature specimen than typical (e.g. a dwarf cultivar or an unusually large old plant).
 - x0: day on the curve timeline of this plant's major growth inflection point (the growth phase may already be mostly complete if the plant is near or past typical maturity)
 - k: growth rate constant (typically 0.02-0.3)
 - xg: germination/emergence midpoint day on the curve timeline
@@ -72,11 +72,11 @@ function buildPrompt(
         : '';
     context = `${age}Here are the growth-curve parameters previously fitted to this plant ${daysSinceLastObservation} days ago: ${JSON.stringify(previousParams)}.${prediction}
 
-Do not guess fresh parameters. CORRECT the previous parameters using this new photo and the ${daysSinceLastObservation} days that have elapsed. Compare how full and healthy the plant looks now to what the previous curve predicted. If it looks as expected, keep parameters close to their previous values. If it looks smaller, more damaged, or less full than predicted, lower L (and/or adjust k/x0) to reflect a reduced trajectory; if larger or healthier, adjust upward. Keep all timing parameters on the same curve timeline as the previous parameters (do not re-base them to today).`;
+Do not guess fresh parameters. CORRECT the previous parameters using this new photo and the ${daysSinceLastObservation} days that have elapsed. Compare how full and healthy the plant looks now to what the previous curve predicted. If it looks as expected, keep parameters close to their previous values. If it looks smaller, more damaged, or less full than predicted, adjust the growth timing and rate (k, x0, and the other timing parameters) to reflect a slower trajectory; if larger or healthier, adjust them the other way. Keep L close to the previous L (${previousParams.l} cm²) unless the photo clearly shows a much smaller or larger mature specimen: current size must be expressed through where the plant sits on the curve, not by lowering L. Keep all timing parameters on the same curve timeline as the previous parameters (do not re-base them to today).`;
   } else {
     context = `${age}Here are typical growth-curve parameters for this species: ${JSON.stringify(previousParams)}.
 
-These are typical parameters for this species, not a prior prediction for this specific plant. Treat them as the starting point and CORRECT them using what you observe in this particular plant's photo (size, fullness, any visible damage or stress) and its age, rather than guessing fresh. Keep timing parameters on the same curve timeline (x=0 is the start of the curve).`;
+These are typical parameters for this species, not a prior prediction for this specific plant. Treat them as the starting point and CORRECT them using what you observe in this particular plant's photo (size, fullness, any visible damage or stress) and its age, rather than guessing fresh. The species mature peak leaf area is L = ${previousParams.l} cm²: keep L close to it unless the photo clearly shows a much smaller or larger mature specimen. The plant's current size must be expressed through where it sits on the curve (timing parameters), not by lowering L. Keep timing parameters on the same curve timeline (x=0 is the start of the curve).`;
   }
 
   return `${intro}\n\n${context}\n\n${PARAM_SCHEMA}`;
