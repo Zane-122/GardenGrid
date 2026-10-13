@@ -48,6 +48,21 @@ l_season (new seasonal leaf area regrown each cycle, cm²)
 Note: cyclical mode reuses the main growth curve's k and x0 for the within-season
 shape, applied to x_season instead of raw x — it does not use xs, ks, f, or r.
 
+P(x) is still multiplied in on top of the seasonal term, and P(x) is evaluated on
+the RAW x (not x_season), so it is not periodic. The full cyclical curve is:
+
+y(x) = L * G(x) * P(x) * [(b_base / L) + (l_season / L) * Pseason(x_season)]
+
+Consequences:
+- In the first cycle P(x) ramps 0 -> 1 around x0, so the first season is damped
+  (the plant "grows in"). From roughly x0 + 5/k days onward P(x) ~ 1 and every
+  later cycle is just the repeating seasonal curve.
+- y(x) is therefore NOT periodic in the first cycle: y(x + cycle_length) != y(x)
+  in general. It only repeats once P(x) has saturated.
+- Fullness (y / L) at the start of a later cycle is ~ b_base / L + a small
+  seasonal tail, so a given fullness may be reached both early in cycle 1 and
+  again in later cycles. solveXForFullness scans only [0, cycle_length].
+
 ## Full parameter list (nulls expected per mode — see growth_mode above)
 
 growth_mode, l, k, x0, xg, kg, xs, ks, f, r, cycle_length, b_base, l_season,

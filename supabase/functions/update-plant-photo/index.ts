@@ -13,6 +13,7 @@ import { analyzePlantHealth } from '../_shared/health-analysis-llm.ts';
 import { generateGrowthParamsFromPhoto } from '../_shared/growth-params-from-photo-llm.ts';
 import type { GeneratedGrowthParams } from '../_shared/growth-params-llm.ts';
 import { solveXForFullness, type GrowthCurveParams } from '../_shared/growth-curve.ts';
+import { paramsFromObservation, predictFullnessPct, type LatestObservation } from '../_shared/plant-status.ts';
 
 type UpdatePlantPhotoBody = {
   plant_id?: string;
@@ -191,7 +192,7 @@ Deno.serve(async (req: Request) => {
     const { data: lastHealthInfo, error: lastHealthInfoError } = await admin
       .from('plant_health_info')
       .select(
-        'observed_at, growth_mode, l, k, x0, xg, kg, xs, ks, f, r, cycle_length, b_base, l_season, carbon_fraction'
+        'observed_at, resolved_x_position, estimated_health_score, growth_mode, l, k, x0, xg, kg, xs, ks, f, r, cycle_length, b_base, l_season, carbon_fraction'
       )
       .eq('plant_id', plant.id)
       .order('observed_at', { ascending: false })
@@ -205,12 +206,23 @@ Deno.serve(async (req: Request) => {
     let previousParams: GeneratedGrowthParams | null = null;
     let daysSinceLastObservation: number | null = null;
     let isRealPriorObservation = false;
+    let previousPredictedFullnessPct: number | null = null;
 
     if (lastHealthInfo?.growth_mode) {
       previousParams = toGeneratedGrowthParams(lastHealthInfo, 0.5);
       if (previousParams) {
         daysSinceLastObservation = daysBetween(lastHealthInfo.observed_at, now);
         isRealPriorObservation = true;
+
+        // Computed in code (not by the AI): where the previous curve says the
+        // plant should be today, i.e. x = previous resolved_x_position + days
+        // since that observation.
+        previousPredictedFullnessPct = predictFullnessPct(
+          paramsFromObservation(lastHealthInfo as LatestObservation),
+          lastHealthInfo.resolved_x_position,
+          lastHealthInfo.observed_at,
+          now
+        );
       }
     }
 
@@ -230,18 +242,29 @@ Deno.serve(async (req: Request) => {
       previousParams,
       daysSinceLastObservation,
       plantAgeInDays,
-      isRealPriorObservation
+      isRealPriorObservation,
+      previousPredictedFullnessPct
     );
 
-    let growthParams = toGrowthCurveParams(basicInfo);
+    // Solve against the NEW photo-based params. Only if the photo analysis
+    // failed, fall back (best-effort) to the species params from
+    // plant_basic_info.
+    let growthParams: GrowthCurveParams | null = photoGrowthParams;
 
-    // Growth params are normally generated when the species is first cached
-    // (see cachePlantInfo in plants.ts). If they're still missing here,
-    // retry generation now rather than silently skipping curve-solving —
-    // this should be a rare fallback, not the normal path.
     if (!growthParams) {
-      basicInfo = await ensureGrowthParams(admin, basicInfo);
       growthParams = toGrowthCurveParams(basicInfo);
+
+      // Growth params are normally generated when the species is first cached
+      // (see cachePlantInfo in plants.ts). If they're still missing here,
+      // retry generation now — this should be a rare fallback.
+      if (!growthParams) {
+        try {
+          basicInfo = await ensureGrowthParams(admin, basicInfo);
+          growthParams = toGrowthCurveParams(basicInfo);
+        } catch (error) {
+          console.error('ensureGrowthParams failed; skipping x-position solve:', error);
+        }
+      }
     }
 
     const resolvedXPosition = growthParams ? solveXForFullness(growthParams, health.fullness_pct) : null;
@@ -264,6 +287,12 @@ Deno.serve(async (req: Request) => {
     }
     plant = updatedPlant as PlantRow;
 
+    // Save the photo params exactly as the AI returned them. If the photo
+    // analysis failed, save the species params instead (the same ones
+    // resolved_x_position was solved against) so every row has a usable curve.
+    const paramsToSave: Partial<GrowthParamFields> | null =
+      photoGrowthParams ?? (basicInfo.growth_mode ? basicInfo : null);
+
     const { data: healthInfo, error: healthInfoError } = await admin
       .from('plant_health_info')
       .insert({
@@ -273,22 +302,22 @@ Deno.serve(async (req: Request) => {
         estimated_fullness_pct: health.fullness_pct,
         estimated_health_score: health.health_score,
         resolved_x_position: resolvedXPosition,
-        ...(photoGrowthParams
+        ...(paramsToSave
           ? {
-              growth_mode: photoGrowthParams.growth_mode,
-              l: photoGrowthParams.l,
-              k: photoGrowthParams.k,
-              x0: photoGrowthParams.x0,
-              xg: photoGrowthParams.xg,
-              kg: photoGrowthParams.kg,
-              xs: photoGrowthParams.xs,
-              ks: photoGrowthParams.ks,
-              f: photoGrowthParams.f,
-              r: photoGrowthParams.r,
-              cycle_length: photoGrowthParams.cycle_length,
-              b_base: photoGrowthParams.b_base,
-              l_season: photoGrowthParams.l_season,
-              carbon_fraction: photoGrowthParams.carbon_fraction,
+              growth_mode: paramsToSave.growth_mode,
+              l: paramsToSave.l,
+              k: paramsToSave.k,
+              x0: paramsToSave.x0,
+              xg: paramsToSave.xg,
+              kg: paramsToSave.kg,
+              xs: paramsToSave.xs,
+              ks: paramsToSave.ks,
+              f: paramsToSave.f,
+              r: paramsToSave.r,
+              cycle_length: paramsToSave.cycle_length,
+              b_base: paramsToSave.b_base,
+              l_season: paramsToSave.l_season,
+              carbon_fraction: paramsToSave.carbon_fraction,
             }
           : {}),
       })
