@@ -192,7 +192,7 @@ Deno.serve(async (req: Request) => {
     const { data: lastHealthInfo, error: lastHealthInfoError } = await admin
       .from('plant_health_info')
       .select(
-        'observed_at, resolved_x_position, estimated_health_score, growth_mode, l, k, x0, xg, kg, xs, ks, f, r, cycle_length, b_base, l_season, carbon_fraction'
+        'observed_at, resolved_x_position, estimated_fullness_pct, estimated_health_score, growth_mode, l, k, x0, xg, kg, xs, ks, f, r, cycle_length, b_base, l_season, carbon_fraction'
       )
       .eq('plant_id', plant.id)
       .order('observed_at', { ascending: false })
@@ -208,7 +208,9 @@ Deno.serve(async (req: Request) => {
     let isRealPriorObservation = false;
     let previousPredictedFullnessPct: number | null = null;
 
-    if (lastHealthInfo?.growth_mode) {
+    // Baseline rows (seeded when the plant was added) have a null
+    // estimated_fullness_pct and are not real prior observations.
+    if (lastHealthInfo?.growth_mode && lastHealthInfo.estimated_fullness_pct != null) {
       previousParams = toGeneratedGrowthParams(lastHealthInfo, 0.5);
       if (previousParams) {
         daysSinceLastObservation = daysBetween(lastHealthInfo.observed_at, now);

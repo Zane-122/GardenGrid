@@ -27,8 +27,16 @@ export type LatestObservation = {
 
 export type PlantStatus = {
   leafAreaCm2: number;
-  healthScore: number | null;
+  healthScore: number;
 };
+
+/**
+ * PLACEHOLDER health score (0-100, same scale as estimated_health_score) used
+ * when an observation has none, e.g. a baseline row seeded at add time before
+ * any photo has been analyzed. Not a real measurement; replace once there is a
+ * better default.
+ */
+export const DEFAULT_HEALTH_SCORE = 70;
 
 const MS_PER_DAY = 86_400_000;
 
@@ -128,7 +136,7 @@ export function getPlantStatus(
     if (!Number.isFinite(leafAreaCm2)) {
       return null;
     }
-    return { leafAreaCm2, healthScore: latestObservation.estimated_health_score ?? null };
+    return { leafAreaCm2, healthScore: latestObservation.estimated_health_score ?? DEFAULT_HEALTH_SCORE };
   } catch {
     return null;
   }
@@ -163,6 +171,8 @@ if (import.meta.main) {
   check('leaf area uses x = resolved_x_position + 10 days', status?.leafAreaCm2 === evaluateGrowthCurve(params, 110), status);
   check('health score comes from the row', status?.healthScore === 0.8, status?.healthScore);
   check('no observation -> null', getPlantStatus(null, null, null, now) === null, null);
+  const noScore = getPlantStatus(null, null, { ...row, estimated_health_score: null }, now);
+  check('missing health score -> DEFAULT_HEALTH_SCORE', noScore?.healthScore === DEFAULT_HEALTH_SCORE, noScore);
   check('missing params -> null', getPlantStatus(null, null, { ...row, l: null }, now) === null, null);
   check('missing position -> null', getPlantStatus(null, null, { ...row, resolved_x_position: null }, now) === null, null);
   check('missing mode param -> null, no throw', getPlantStatus(null, null, { ...row, xs: null }, now) === null, null);
