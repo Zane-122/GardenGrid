@@ -7,11 +7,11 @@ import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/auth';
 import { useTheme } from '@/hooks/use-theme';
-import { getPollenBalance } from '@/utils/plants';
+import { getCurrencyBalances } from '@/utils/plants';
 
 export const CURRENCY_BAR_BODY = 48;
 
-function formatPollen(value: number) {
+function formatAmount(value: number) {
   if (value >= 10) {
     return Math.round(value).toLocaleString();
   }
@@ -22,13 +22,13 @@ export function CurrencyBar() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { signOut } = useAuth();
-  const [pollenCm3, setPollenCm3] = useState<number | null>(null);
+  const [balances, setBalances] = useState<{ pollen: number; oxygen: number } | null>(null);
 
   const load = useCallback(async () => {
     try {
-      setPollenCm3(await getPollenBalance());
+      setBalances(await getCurrencyBalances());
     } catch {
-      setPollenCm3(null);
+      setBalances(null);
     }
   }, []);
 
@@ -38,7 +38,8 @@ export function CurrencyBar() {
     }, [load])
   );
 
-  const amount = pollenCm3 == null ? '…' : `${formatPollen(pollenCm3)} cm³`;
+  const pollenAmount = balances == null ? '…' : `${formatAmount(balances.pollen)} cm³`;
+  const oxygenAmount = balances == null ? '…' : `${formatAmount(balances.oxygen)} mL`;
 
   return (
     <View
@@ -60,11 +61,19 @@ export function CurrencyBar() {
             Log out
           </ThemedText>
         </Pressable>
-        <View style={[styles.pollen, { backgroundColor: theme.backgroundElement }]}>
-          <View style={[styles.dot, { backgroundColor: theme.primary }]} />
-          <ThemedText type="smallBold" numberOfLines={1}>
-            Pollen {amount}
-          </ThemedText>
+        <View style={styles.currencies}>
+          <View style={[styles.pill, { backgroundColor: theme.backgroundElement }]}>
+            <View style={[styles.dot, { backgroundColor: theme.oxygen }]} />
+            <ThemedText type="smallBold" numberOfLines={1}>
+              Oxygen: {oxygenAmount}
+            </ThemedText>
+          </View>
+          <View style={[styles.pill, { backgroundColor: theme.backgroundElement }]}>
+            <View style={[styles.dot, { backgroundColor: theme.pollen }]} />
+            <ThemedText type="smallBold" numberOfLines={1}>
+              Pollen: {pollenAmount}
+            </ThemedText>
+          </View>
         </View>
       </View>
     </View>
@@ -83,7 +92,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: Spacing.two,
   },
-  pollen: {
+  currencies: {
+    flexShrink: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.one,
+  },
+  pill: {
     flexShrink: 1,
     flexDirection: 'row',
     alignItems: 'center',

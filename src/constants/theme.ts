@@ -46,6 +46,9 @@ const flat = {
   iconSelected: '#3E8F4A',
   overlay: 'rgba(0, 0, 0, 0.35)',
   shadow: 'transparent',
+
+  oxygen: '#0ba0a5',
+  pollen: '#ffd500',
 } as const;
 
 export const Colors = {
