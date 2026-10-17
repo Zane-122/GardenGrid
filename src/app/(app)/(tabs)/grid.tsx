@@ -27,6 +27,7 @@ import {
   type GardenSlot,
 } from '@/utils/garden';
 import { listUserPlants, plantDisplayName, type InventoryPlant } from '@/utils/plants';
+import { listWateredPlantIds } from '@/utils/watering';
 
 type Frame = { x: number; y: number; width: number; height: number };
 type DragState = { plantId: string; x: number; y: number };
@@ -91,6 +92,7 @@ export default function GridScreen() {
   };
   const { user } = useAuth();
   const [plants, setPlants] = useState<InventoryPlant[]>([]);
+  const [wateredIds, setWateredIds] = useState<Set<string>>(new Set());
   const [slots, setSlots] = useState<GardenSlot[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -161,6 +163,11 @@ export default function GridScreen() {
       const [nextPlants, nextSlots] = await Promise.all([listUserPlants(), listGardenSlots()]);
       setPlants(nextPlants);
       setSlots(nextSlots);
+      try {
+        setWateredIds(await listWateredPlantIds());
+      } catch (waterError) {
+        setError(waterError instanceof Error ? waterError.message : 'Could not load watering logs');
+      }
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Could not load your garden');
     } finally {
@@ -354,6 +361,7 @@ export default function GridScreen() {
                               key={index}
                               index={index}
                               plant={plant}
+                              needsWater={plant != null && !wateredIds.has(plant.id)}
                               bed={bed}
                               selected={selectedPlantId != null && occupant?.plant_id === selectedPlantId}
                               highlighted={highlighted}
@@ -416,6 +424,7 @@ export default function GridScreen() {
                     <InventoryItem
                       key={plant.id}
                       plant={plant}
+                      needsWater={!wateredIds.has(plant.id)}
                       placed={placedIndex != null}
                       selected={selectedPlantId === plant.id}
                       dragging={drag?.plantId === plant.id}
@@ -443,7 +452,7 @@ export default function GridScreen() {
                 top: drag.y - screenOrigin.current.y - 64,
               },
             ]}>
-            <PlantToken plant={draggingPlant} compact />
+            <PlantToken plant={draggingPlant} compact needsWater={!wateredIds.has(draggingPlant.id)} />
           </View>
         ) : null}
       </View>
@@ -454,6 +463,7 @@ export default function GridScreen() {
 const GardenSlotCell = memo(function GardenSlotCell({
   index,
   plant,
+  needsWater = false,
   bed,
   selected,
   highlighted,
@@ -466,6 +476,7 @@ const GardenSlotCell = memo(function GardenSlotCell({
 }: {
   index: number;
   plant?: InventoryPlant;
+  needsWater?: boolean;
   bed: {
     woodOuter: string;
     wood: string;
@@ -522,7 +533,7 @@ const GardenSlotCell = memo(function GardenSlotCell({
         pressed && styles.pressed,
       ]}>
       {plant ? (
-        <PlantToken plant={plant} selected={selected} />
+        <PlantToken plant={plant} selected={selected} needsWater={needsWater} />
       ) : (
         <ThemedText type="small" style={[styles.slotIndex, { color: bed.label }]}>
           {index}
@@ -553,6 +564,7 @@ const GardenSlotCell = memo(function GardenSlotCell({
 
 const InventoryItem = memo(function InventoryItem({
   plant,
+  needsWater = false,
   placed,
   selected,
   dragging,
@@ -562,6 +574,7 @@ const InventoryItem = memo(function InventoryItem({
   onDragEnd,
 }: {
   plant: InventoryPlant;
+  needsWater?: boolean;
   placed: boolean;
   selected: boolean;
   dragging: boolean;
@@ -590,7 +603,7 @@ const InventoryItem = memo(function InventoryItem({
         accessibilityLabel={plantDisplayName(plant.info)}
         onPress={onPress}
         style={({ pressed }) => [pressed && styles.pressed, dragging && styles.draggingSource]}>
-        <PlantToken plant={plant} compact placed={placed} selected={selected} />
+        <PlantToken plant={plant} compact placed={placed} selected={selected} needsWater={needsWater} />
       </Pressable>
     </GestureDetector>
   );

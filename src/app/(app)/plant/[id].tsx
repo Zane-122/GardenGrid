@@ -4,6 +4,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
+import { FriendlyButton } from '@/components/app/friendly-button';
 import { GardenFrame } from '@/components/app/garden-frame';
 import { GrowthChart } from '@/components/inventory/growth-chart';
 import { PlantBanner } from '@/components/inventory/plant-banner';
@@ -24,6 +25,12 @@ import {
   type InventoryPlant,
   type PlantGrowthObservation,
 } from '@/utils/plants';
+import {
+  formatWateredOn,
+  getPlantWateringStatus,
+  markPlantsWatered,
+  type PlantWateringStatus,
+} from '@/utils/watering';
 
 function formatLastUpdated(lastRecalibratedAt: string | null | undefined) {
   if (!lastRecalibratedAt) {
@@ -48,6 +55,8 @@ export default function PlantDetailScreen() {
   const [observation, setObservation] = useState<PlantGrowthObservation | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [updatingPhoto, setUpdatingPhoto] = useState(false);
+  const [wateringStatus, setWateringStatus] = useState<PlantWateringStatus | null>(null);
+  const [markingWatered, setMarkingWatered] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -55,7 +64,12 @@ export default function PlantDetailScreen() {
         const plants = await listUserPlants();
         const found = plants.find((item) => item.id === id) ?? null;
         setPlant(found);
-        setObservation(found ? await latestPlantGrowthObservation(found.id) : null);
+        const [nextObservation, nextWatering] = await Promise.all([
+          found ? latestPlantGrowthObservation(found.id) : Promise.resolve(null),
+          found ? getPlantWateringStatus(found.id) : Promise.resolve(null),
+        ]);
+        setObservation(nextObservation);
+        setWateringStatus(nextWatering);
       } catch (loadError) {
         setError(loadError instanceof Error ? loadError.message : 'Could not load that plant');
       }
@@ -91,6 +105,23 @@ export default function PlantDetailScreen() {
         },
       },
     ]);
+  }
+
+  async function handleMarkWatered() {
+    if (!plant || markingWatered || wateringStatus?.wateredToday) {
+      return;
+    }
+
+    setMarkingWatered(true);
+    setError(null);
+    try {
+      await markPlantsWatered([plant.id]);
+      setWateringStatus(await getPlantWateringStatus(plant.id));
+    } catch (markError) {
+      setError(markError instanceof Error ? markError.message : 'Could not mark this plant as watered');
+    } finally {
+      setMarkingWatered(false);
+    }
   }
 
   async function handleUpdatePhoto(fromCamera: boolean) {
@@ -157,6 +188,7 @@ export default function PlantDetailScreen() {
           photoUrl={plant ? plantImageUrl(plant) : null}
           name={name}
           scientificName={scientificName}
+          needsWater={plant != null && wateringStatus != null && !wateringStatus.wateredToday}
           onBack={() => router.back()}
         />
 
@@ -166,6 +198,28 @@ export default function PlantDetailScreen() {
           </GardenFrame>
           <GardenFrame variant="bed">
             <WateringPanel watering={plant?.info?.watering} />
+            {plant && wateringStatus ? (
+              <View style={styles.wateringStatus}>
+                <ThemedText themeColor="textSecondary">
+                  {wateringStatus.wateredToday
+                    ? 'Watered today.'
+                    : wateringStatus.lastWateredOn
+                      ? `Last watered ${formatWateredOn(wateringStatus.lastWateredOn)}.`
+                      : 'No watering logged yet.'}
+                </ThemedText>
+                <FriendlyButton
+                  label={
+                    wateringStatus.wateredToday
+                      ? 'Watered today'
+                      : markingWatered
+                        ? 'Saving…'
+                        : 'Mark as watered'
+                  }
+                  disabled={wateringStatus.wateredToday || markingWatered}
+                  onPress={() => void handleMarkWatered()}
+                />
+              </View>
+            ) : null}
           </GardenFrame>
           <GardenFrame variant="bed">
             <SoilPanel soilType={plant?.info?.best_soil_type} />
@@ -253,6 +307,10 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.five,
     paddingBottom: Spacing.five,
     gap: Spacing.three,
+  },
+  wateringStatus: {
+    marginTop: Spacing.three,
+    gap: Spacing.two,
   },
   deleteButton: {
     minHeight: 48,

@@ -3,6 +3,7 @@ import { SymbolView } from 'expo-symbols';
 import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { NeedsWaterBubble } from '@/components/inventory/needs-water-bubble';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 
@@ -20,11 +21,19 @@ type PlantBannerProps = {
   photoUrl?: string | null;
   name: string;
   scientificName?: string | null;
+  needsWater?: boolean;
   flushTop?: boolean;
   onBack: () => void;
 };
 
-export function PlantBanner({ photoUrl, name, scientificName, flushTop = false, onBack }: PlantBannerProps) {
+export function PlantBanner({
+  photoUrl,
+  name,
+  scientificName,
+  needsWater = false,
+  flushTop = false,
+  onBack,
+}: PlantBannerProps) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const type = bannerType(width);
@@ -54,6 +63,12 @@ export function PlantBanner({ photoUrl, name, scientificName, flushTop = false, 
           size={18}
         />
       </Pressable>
+
+      {needsWater ? (
+        <NeedsWaterBubble
+          style={{ top: (flushTop ? Spacing.two : insets.top + Spacing.two) + 4, right: Spacing.four }}
+        />
+      ) : null}
 
       <View style={styles.copy}>
         <ThemedText style={[styles.name, { fontSize: type.name, lineHeight: type.nameLine }]}>

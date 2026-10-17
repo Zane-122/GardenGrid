@@ -55,6 +55,12 @@
           "cameraPermission": "Garden Grid uses your camera to identify plants.",
           "microphonePermission": false
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#3F6B3A"
+        }
       ]
     ],
     "experiments": {
