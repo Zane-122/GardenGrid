@@ -165,6 +165,20 @@ export default function PlantDetailScreen() {
             <GrowthChart params={growthParams} createdAt={plant?.created_at} ageAnchor={observation?.ageAnchor ?? null} />
           </GardenFrame>
           <GardenFrame variant="bed">
+            <ThemedText type="smallBold">Pollen</ThemedText>
+            <ThemedText themeColor="textSecondary">
+              {plant?.flower_count != null
+                ? `About ${Math.round(plant.flower_count).toLocaleString()} flowers right now.`
+                : 'Flower count shows up after a photo, then refreshes every hour.'}
+            </ThemedText>
+            {plant?.flower_ratio != null ? (
+              <ThemedText type="small" themeColor="textSecondary">
+                {plant.flower_ratio.toFixed(4)} flowers per cm² of leaf ·{' '}
+                {plant.pollen_per_flower_cm3?.toFixed(3) ?? '0'} cm³ pollen per flower every 8 hours
+              </ThemedText>
+            ) : null}
+          </GardenFrame>
+          <GardenFrame variant="bed">
             <WateringPanel watering={plant?.info?.watering} />
           </GardenFrame>
           <GardenFrame variant="bed">

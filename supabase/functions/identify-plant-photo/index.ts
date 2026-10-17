@@ -1,9 +1,12 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 
+import type { SupabaseClient } from 'jsr:@supabase/supabase-js@2';
+
 import {
   BASIC_DETAILS,
   cachePlantInfo,
   corsHeaders,
+  decodePlantImage,
   isPlantKingdom,
   json,
   NOT_A_GARDEN_PLANT_MESSAGE,
@@ -14,6 +17,50 @@ import {
   toBasicInfo,
   type PlantBasicInfoRow,
 } from '../_shared/plants.ts';
+import { generateFlowerPollenParams } from '../_shared/flower-pollen.ts';
+
+function encodeBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+async function rememberFlowerPollen(
+  admin: SupabaseClient,
+  plantId: string,
+  image: string,
+  scientificName: string | null,
+  commonName: string | null
+) {
+  try {
+    const { bytes, contentType } = await decodePlantImage(image);
+    const constants = await generateFlowerPollenParams(
+      encodeBase64(bytes),
+      contentType,
+      scientificName,
+      commonName,
+      null
+    );
+    if (!constants) {
+      return;
+    }
+    const { error } = await admin
+      .from('plants')
+      .update({
+        flower_ratio: constants.flower_ratio,
+        pollen_per_flower_cm3: constants.pollen_per_flower_cm3,
+      })
+      .eq('id', plantId);
+    if (error) {
+      console.error(`rememberFlowerPollen: ${error.message}`);
+    }
+  } catch (error) {
+    console.error('rememberFlowerPollen failed:', error);
+  }
+}
 
 type IdentifyBody = {
   images?: string[];
@@ -69,6 +116,13 @@ Deno.serve(async (req: Request) => {
 
       const { updated_at: _updatedAt, ...info } = cachedInfo;
       const result = await saveUserPlantWithPhoto(admin, user.id, info, images[0]);
+      await rememberFlowerPollen(
+        admin,
+        result.plant.id,
+        images[0],
+        info.scientific_name,
+        info.common_names?.[0] ?? null
+      );
 
       return json({
         added: true,
@@ -129,6 +183,16 @@ Deno.serve(async (req: Request) => {
     const result = shouldSave
       ? await saveUserPlantWithPhoto(admin, user.id, info, images[0])
       : { plant: null, info: await cachePlantInfo(admin, info), photo: null };
+
+    if (result.plant) {
+      await rememberFlowerPollen(
+        admin,
+        result.plant.id,
+        images[0],
+        info.scientific_name,
+        info.common_names?.[0] ?? null
+      );
+    }
 
     return json({
       added: shouldSave,
