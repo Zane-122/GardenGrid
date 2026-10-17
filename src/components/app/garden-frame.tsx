@@ -1,5 +1,5 @@
 import { type ReactNode } from 'react';
-import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Platform, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -28,7 +28,8 @@ export function GardenFrame({
       <View
         style={[
           styles.bedOuter,
-          { backgroundColor: theme.woodOuter, borderColor: theme.woodEdge, shadowColor: theme.shadow },
+          { backgroundColor: theme.woodOuter, borderColor: theme.woodEdge },
+          bedShadow(theme.shadow),
           style,
         ]}>
         <View
@@ -67,15 +68,26 @@ export function GardenFrame({
   );
 }
 
+function bedShadow(color: string): ViewStyle {
+  return (
+    Platform.select({
+      web: { boxShadow: `0px 4px 10px ${color}` },
+      default: {
+        shadowColor: color,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 10,
+        elevation: 4,
+      },
+    }) ?? {}
+  );
+}
+
 const styles = StyleSheet.create({
   bedOuter: {
     padding: 3,
     borderWidth: 1,
     borderRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 1,
-    shadowRadius: 10,
-    elevation: 4,
   },
   bedWood: {
     padding: 8,
