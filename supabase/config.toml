@@ -8,3 +8,7 @@ verify_jwt = true
 
 [functions.delete-plant]
 verify_jwt = true
+
+# Called by pg_cron with a shared bearer secret (ACCRUE_SECRET), not a user JWT.
+[functions.accrue-oxygen]
+verify_jwt = false
