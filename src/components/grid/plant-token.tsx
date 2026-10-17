@@ -1,6 +1,7 @@
 import { Image } from 'expo-image';
 import { StyleSheet, View } from 'react-native';
 
+import { NeedsWaterBubble } from '@/components/inventory/needs-water-bubble';
 import { ThemedText } from '@/components/themed-text';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -11,9 +12,16 @@ type PlantTokenProps = {
   compact?: boolean;
   placed?: boolean;
   selected?: boolean;
+  needsWater?: boolean;
 };
 
-export function PlantToken({ plant, compact = false, placed = false, selected = false }: PlantTokenProps) {
+export function PlantToken({
+  plant,
+  compact = false,
+  placed = false,
+  selected = false,
+  needsWater = false,
+}: PlantTokenProps) {
   const theme = useTheme();
   const name = plantDisplayName(plant.info);
 
@@ -47,6 +55,7 @@ export function PlantToken({ plant, compact = false, placed = false, selected = 
             {name}
           </ThemedText>
         </View>
+        {needsWater ? <NeedsWaterBubble compact /> : null}
       </View>
     );
   }
@@ -74,6 +83,7 @@ export function PlantToken({ plant, compact = false, placed = false, selected = 
           </ThemedText>
         ) : null}
       </View>
+      {needsWater ? <NeedsWaterBubble compact /> : null}
     </View>
   );
 }

@@ -12,6 +12,11 @@ import { useAuth } from '@/context/auth';
 import { useOnboarding } from '@/context/onboarding';
 import { useTheme } from '@/hooks/use-theme';
 import { deleteUserPlant, getPollenBalance, listUserPlants, type InventoryPlant } from '@/utils/plants';
+import { listWateredPlantIds, markPlantsWatered } from '@/utils/watering';
+
+function errorText(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
 
 function formatPollen(value: number) {
   if (value >= 10) {
@@ -25,6 +30,10 @@ export default function GardenScreen() {
   const { profile } = useOnboarding();
   const { signOut } = useAuth();
   const [plants, setPlants] = useState<InventoryPlant[]>([]);
+  const [wateredIds, setWateredIds] = useState<Set<string>>(new Set());
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selecting, setSelecting] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pollenCm3, setPollenCm3] = useState<number | null>(null);
@@ -39,7 +48,18 @@ export default function GardenScreen() {
         setPollenCm3(null);
       }
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Could not load your plants');
+      setError(errorText(loadError, 'Could not load your plants'));
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const nextWatered = await listWateredPlantIds();
+      setWateredIds(nextWatered);
+      setSelectedIds(new Set());
+      setSelecting(false);
+    } catch (loadError) {
+      setError(errorText(loadError, 'Could not load watering logs'));
     } finally {
       setLoading(false);
     }
@@ -63,7 +83,7 @@ export default function GardenScreen() {
               await deleteUserPlant(plant.id);
               setPlants((current) => current.filter((item) => item.id !== plant.id));
             } catch (removeError) {
-              setError(removeError instanceof Error ? removeError.message : 'Could not remove plant');
+              setError(errorText(removeError, 'Could not remove plant'));
             }
           })();
         },
@@ -71,6 +91,7 @@ export default function GardenScreen() {
     ]);
   }
 
+  const needsWaterIds = plants.filter((plant) => !wateredIds.has(plant.id)).map((plant) => plant.id);
   const firstName = profile?.displayName?.split(' ')[0];
   const subtitle = loading
     ? 'Loading plants…'
@@ -78,7 +99,46 @@ export default function GardenScreen() {
       ? firstName
         ? `Welcome back, ${firstName}.`
         : 'Your garden is empty.'
-      : `${plants.length} plant${plants.length === 1 ? '' : 's'} in your garden`;
+      : needsWaterIds.length === 0
+        ? `${plants.length} plant${plants.length === 1 ? '' : 's'} · all watered today`
+        : `${needsWaterIds.length} plant${needsWaterIds.length === 1 ? '' : 's'} still need water`;
+
+  function toggleSelected(plantId: string) {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(plantId)) {
+        next.delete(plantId);
+      } else {
+        next.add(plantId);
+      }
+      return next;
+    });
+  }
+
+  async function markWatered(plantIds: string[]) {
+    if (saving || plantIds.length === 0) {
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+    try {
+      await markPlantsWatered(plantIds);
+      setWateredIds((current) => {
+        const next = new Set(current);
+        for (const plantId of plantIds) {
+          next.add(plantId);
+        }
+        return next;
+      });
+      setSelectedIds(new Set());
+      setSelecting(false);
+    } catch (markError) {
+      setError(errorText(markError, 'Could not mark plants as watered'));
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <ThemedView style={styles.screen}>
@@ -105,6 +165,42 @@ export default function GardenScreen() {
           </Pressable>
         </View>
 
+        {plants.length > 0 ? (
+          <View style={styles.actions}>
+            {selecting ? (
+              <>
+                <FriendlyButton
+                  label={
+                    saving
+                      ? 'Saving…'
+                      : selectedIds.size === 0
+                        ? 'Mark watered'
+                        : `Mark ${selectedIds.size} watered`
+                  }
+                  disabled={saving || selectedIds.size === 0}
+                  onPress={() => void markWatered([...selectedIds])}
+                />
+                <FriendlyButton
+                  label="Cancel"
+                  variant="ghost"
+                  disabled={saving}
+                  onPress={() => {
+                    setSelecting(false);
+                    setSelectedIds(new Set());
+                  }}
+                />
+              </>
+            ) : (
+              <FriendlyButton
+                label="Select plants to water"
+                variant="ghost"
+                disabled={needsWaterIds.length === 0}
+                onPress={() => setSelecting(true)}
+              />
+            )}
+          </View>
+        ) : null}
+
         {error ? (
           <ThemedText type="small" style={{ color: theme.danger }}>
             {error}
@@ -128,13 +224,30 @@ export default function GardenScreen() {
               </GardenFrame>
             )
           }
-          renderItem={({ item }) => (
-            <PlantCard
-              plant={item}
-              onPress={() => router.push(`/plant/${item.id}`)}
-              onRemove={() => confirmRemove(item)}
-            />
-          )}
+          renderItem={({ item }) => {
+            const needsWater = !wateredIds.has(item.id);
+            return (
+              <PlantCard
+                plant={item}
+                needsWater={needsWater}
+                selecting={selecting}
+                selected={selectedIds.has(item.id)}
+                onPress={() => {
+                  if (selecting) {
+                    if (needsWater) {
+                      toggleSelected(item.id);
+                    }
+                    return;
+                  }
+                  router.push(`/plant/${item.id}`);
+                }}
+                onRemove={selecting ? undefined : () => confirmRemove(item)}
+                onMarkWatered={
+                  selecting || !needsWater || saving ? undefined : () => void markWatered([item.id])
+                }
+              />
+            );
+          }}
         />
       </View>
     </ThemedView>
@@ -163,6 +276,11 @@ const styles = StyleSheet.create({
   hello: {
     flex: 1,
     gap: Spacing.half,
+  },
+  actions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.two,
   },
   list: {
     gap: Spacing.two,

@@ -2,6 +2,7 @@ import { Image } from 'expo-image';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { GardenFrame } from '@/components/app/garden-frame';
+import { NeedsWaterBubble } from '@/components/inventory/needs-water-bubble';
 import { ThemedText } from '@/components/themed-text';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -9,11 +10,23 @@ import { plantDisplayName, plantImageUrl, wateringLabel, type InventoryPlant } f
 
 type PlantCardProps = {
   plant: InventoryPlant;
+  needsWater?: boolean;
+  selecting?: boolean;
+  selected?: boolean;
   onPress?: () => void;
   onRemove?: () => void;
+  onMarkWatered?: () => void;
 };
 
-export function PlantCard({ plant, onPress, onRemove }: PlantCardProps) {
+export function PlantCard({
+  plant,
+  needsWater = false,
+  selecting = false,
+  selected = false,
+  onPress,
+  onRemove,
+  onMarkWatered,
+}: PlantCardProps) {
   const theme = useTheme();
   const name = plantDisplayName(plant.info);
   const scientificName = plant.info?.scientific_name;
@@ -22,15 +35,18 @@ export function PlantCard({ plant, onPress, onRemove }: PlantCardProps) {
 
   const details = (
     <>
-      {photoUrl ? (
-        <Image source={{ uri: photoUrl }} style={styles.image} contentFit="cover" />
-      ) : (
-        <View style={[styles.image, styles.placeholder, { backgroundColor: theme.backgroundElement }]}>
-          <ThemedText type="small" themeColor="textSecondary">
-            ?
-          </ThemedText>
-        </View>
-      )}
+      <View style={styles.photo}>
+        {photoUrl ? (
+          <Image source={{ uri: photoUrl }} style={styles.image} contentFit="cover" />
+        ) : (
+          <View style={[styles.image, styles.placeholder, { backgroundColor: theme.backgroundElement }]}>
+            <ThemedText type="small" themeColor="textSecondary">
+              ?
+            </ThemedText>
+          </View>
+        )}
+        {needsWater ? <NeedsWaterBubble /> : null}
+      </View>
 
       <View style={styles.body}>
         <ThemedText type="smallBold">{name}</ThemedText>
@@ -44,36 +60,74 @@ export function PlantCard({ plant, onPress, onRemove }: PlantCardProps) {
             Water: {watering}
           </ThemedText>
         ) : null}
+        {needsWater ? (
+          <ThemedText type="small" style={{ color: theme.info }}>
+            Needs water today
+          </ThemedText>
+        ) : (
+          <ThemedText type="small" themeColor="textSecondary">
+            Watered today
+          </ThemedText>
+        )}
+        {onMarkWatered ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Mark ${name} as watered`}
+            onPress={onMarkWatered}
+            style={({ pressed }) => [styles.mark, pressed && styles.pressed]}>
+            <ThemedText type="smallBold" style={{ color: theme.primary }}>
+              Mark watered
+            </ThemedText>
+          </Pressable>
+        ) : null}
       </View>
     </>
   );
 
   return (
     <GardenFrame padded={false}>
-      <View style={styles.card}>
-      {onPress ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={name}
-          onPress={onPress}
-          style={({ pressed }) => [styles.main, pressed && styles.pressed]}>
-          {details}
-        </Pressable>
-      ) : (
-        <View style={styles.main}>{details}</View>
-      )}
+      <View style={[styles.card, selecting && !needsWater && styles.dimmed]}>
+        {onPress ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={selecting ? `Select ${name}` : name}
+            accessibilityState={{ selected }}
+            onPress={onPress}
+            style={({ pressed }) => [styles.main, pressed && styles.pressed]}>
+            {details}
+          </Pressable>
+        ) : (
+          <View style={styles.main}>{details}</View>
+        )}
 
-      {onRemove ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Remove ${name}`}
-          onPress={onRemove}
-          style={({ pressed }) => [styles.remove, pressed && styles.pressed]}>
-          <ThemedText type="smallBold" style={{ color: theme.danger }}>
-            Remove
-          </ThemedText>
-        </Pressable>
-      ) : null}
+        {selecting && needsWater ? (
+          <View
+            style={[
+              styles.check,
+              {
+                borderColor: selected ? theme.primary : theme.border,
+                backgroundColor: selected ? theme.primary : theme.surface,
+              },
+            ]}>
+            {selected ? (
+              <ThemedText type="smallBold" style={{ color: theme.onPrimary }}>
+                ✓
+              </ThemedText>
+            ) : null}
+          </View>
+        ) : null}
+
+        {onRemove ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Remove ${name}`}
+            onPress={onRemove}
+            style={({ pressed }) => [styles.remove, pressed && styles.pressed]}>
+            <ThemedText type="smallBold" style={{ color: theme.danger }}>
+              Remove
+            </ThemedText>
+          </Pressable>
+        ) : null}
       </View>
     </GardenFrame>
   );
@@ -85,11 +139,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: Spacing.three,
   },
+  dimmed: {
+    opacity: 0.55,
+  },
   main: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.three,
+  },
+  photo: {
+    width: 76,
+    height: 76,
   },
   image: {
     width: 76,
@@ -106,6 +167,19 @@ const styles = StyleSheet.create({
   },
   scientific: {
     fontStyle: 'italic',
+  },
+  mark: {
+    alignSelf: 'flex-start',
+    paddingVertical: Spacing.one,
+  },
+  check: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Spacing.two,
   },
   remove: {
     paddingHorizontal: Spacing.two,
