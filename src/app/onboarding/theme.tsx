@@ -22,7 +22,7 @@ export default function OnboardingThemeScreen() {
       onContinue={handleContinue}>
       <ChoiceCard
         title="Light mode"
-        description="Warm linen and wood, like a garden bed in daylight."
+        description="White and light gray, with a green accent."
         selected={selected === 'light'}
         onPress={() => updateDraft({ themePreference: 'light' })}
         icon={{ ios: 'sun.max.fill', android: 'light_mode', web: 'light_mode' }}
@@ -30,7 +30,7 @@ export default function OnboardingThemeScreen() {
       />
       <ChoiceCard
         title="Dark mode"
-        description="Deep soil tones that are easier on the eyes at night."
+        description="The same flat light look. Green stays the only accent."
         selected={selected === 'dark'}
         onPress={() => updateDraft({ themePreference: 'dark' })}
         icon={{ ios: 'moon.fill', android: 'dark_mode', web: 'dark_mode' }}

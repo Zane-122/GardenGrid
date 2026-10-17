@@ -10,12 +10,13 @@ export default function TabsLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: theme.wood,
+        tabBarActiveTintColor: theme.primary,
         tabBarInactiveTintColor: theme.textSecondary,
         tabBarLabelStyle: { fontWeight: '500', fontSize: 11 },
+        tabBarItemStyle: { paddingHorizontal: 0 },
         tabBarStyle: {
           backgroundColor: theme.surface,
-          borderTopColor: theme.wood,
+          borderTopColor: theme.border,
         },
       }}>
       <Tabs.Screen

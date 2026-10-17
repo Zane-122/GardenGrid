@@ -72,6 +72,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   hero: {
+    width: '100%',
+    minWidth: 0,
     gap: Spacing.two,
   },
   brand: {

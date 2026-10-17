@@ -119,9 +119,6 @@ export default function WateringCalendarScreen() {
     <ThemedView style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.hello}>
-          <ThemedText type="small" themeColor="textSecondary">
-            Garden Grid
-          </ThemedText>
           <ThemedText type="heading">Watering</ThemedText>
           <ThemedText themeColor="textSecondary">
             {loading ? 'Loading the month…' : 'Days you marked plants as watered.'}
@@ -148,7 +145,9 @@ export default function WateringCalendarScreen() {
                 size={18}
               />
             </Pressable>
-            <ThemedText type="smallBold">{monthTitle(year, month)}</ThemedText>
+            <ThemedText type="smallBold" numberOfLines={1} style={styles.monthTitle}>
+              {monthTitle(year, month)}
+            </ThemedText>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Next month"
@@ -242,8 +241,9 @@ const styles = StyleSheet.create({
   content: {
     width: '100%',
     maxWidth: MaxContentWidth,
-    paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.four,
+    alignSelf: 'center',
+    paddingHorizontal: Spacing.three,
+    paddingTop: Spacing.three,
     paddingBottom: Spacing.five,
     gap: Spacing.three,
   },
@@ -263,6 +263,10 @@ const styles = StyleSheet.create({
     height: 36,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  monthTitle: {
+    flex: 1,
+    textAlign: 'center',
   },
   week: {
     flexDirection: 'row',

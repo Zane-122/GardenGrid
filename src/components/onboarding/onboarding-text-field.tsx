@@ -70,9 +70,13 @@ export function OnboardingTextField({
 
 const styles = StyleSheet.create({
   wrapper: {
+    width: '100%',
+    minWidth: 0,
     gap: Spacing.one,
   },
   field: {
+    width: '100%',
+    minWidth: 0,
     minHeight: 52,
     borderWidth: 1,
     borderRadius: Radius.md,
@@ -82,6 +86,7 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
+    minWidth: 0,
     minHeight: 52,
     paddingHorizontal: Spacing.three,
     fontSize: 16,

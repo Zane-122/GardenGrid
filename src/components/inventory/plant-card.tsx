@@ -49,9 +49,9 @@ export function PlantCard({
       </View>
 
       <View style={styles.body}>
-        <ThemedText type="smallBold">{name}</ThemedText>
+        <ThemedText type="smallBold" numberOfLines={2}>{name}</ThemedText>
         {scientificName && scientificName !== name ? (
-          <ThemedText type="small" themeColor="textSecondary" style={styles.scientific}>
+          <ThemedText type="small" themeColor="textSecondary" numberOfLines={1} style={styles.scientific}>
             {scientificName}
           </ThemedText>
         ) : null}
@@ -149,12 +149,12 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
   },
   photo: {
-    width: 76,
-    height: 76,
+    width: 64,
+    height: 64,
   },
   image: {
-    width: 76,
-    height: 76,
+    width: 64,
+    height: 64,
     borderRadius: Radius.md,
   },
   placeholder: {

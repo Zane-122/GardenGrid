@@ -1,4 +1,4 @@
-import { DarkTheme, DefaultTheme, ThemeProvider, Stack } from 'expo-router';
+import { DefaultTheme, ThemeProvider, Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 
@@ -20,7 +20,7 @@ export default function RootLayout() {
 
 function RootNavigator() {
   const { isReady: authIsReady, session } = useAuth();
-  const { isReady, colorScheme } = useOnboarding();
+  const { isReady } = useOnboarding();
 
   if (!authIsReady || !isReady) {
     return null;
@@ -30,8 +30,8 @@ function RootNavigator() {
   const isSignedIn = !!session;
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
+    <ThemeProvider value={DefaultTheme}>
+      <StatusBar style="dark" />
       <AnimatedSplashOverlay />
       <Stack>
         <Stack.Protected guard={isSignedIn}>

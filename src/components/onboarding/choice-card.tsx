@@ -33,7 +33,7 @@ export function ChoiceCard({
         styles.card,
         {
           backgroundColor: selected ? theme.backgroundSelected : theme.surface,
-          borderColor: selected ? theme.woodEdge : theme.wood,
+          borderColor: selected ? theme.primary : theme.border,
         },
         pressed && styles.pressed,
       ]}>

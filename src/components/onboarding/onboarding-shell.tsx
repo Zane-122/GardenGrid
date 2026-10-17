@@ -131,11 +131,11 @@ export function OnboardingShell({
             onPress={onContinue}
             style={({ pressed }) => [
               styles.continueButton,
-              { backgroundColor: theme.wood, borderColor: theme.woodEdge },
+              { backgroundColor: theme.primary, borderColor: theme.primary },
               (continueDisabled || continueLoading) && styles.disabled,
               pressed && !continueDisabled && styles.pressed,
             ]}>
-            <ThemedText type="smallBold" style={{ color: theme.plotLabel }}>
+            <ThemedText type="smallBold" style={{ color: theme.onPrimary }}>
               {continueLoading ? loadingLabel : continueLabel}
             </ThemedText>
           </Pressable>
@@ -162,6 +162,8 @@ const styles = StyleSheet.create({
     gap: Spacing.five,
   },
   header: {
+    width: '100%',
+    minWidth: 0,
     gap: Spacing.two,
   },
   headerRow: {
@@ -195,6 +197,8 @@ const styles = StyleSheet.create({
     marginTop: Spacing.two,
   },
   body: {
+    width: '100%',
+    minWidth: 0,
     flexGrow: 1,
     gap: Spacing.three,
   },
@@ -207,6 +211,7 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
   },
   continueButton: {
+    alignSelf: 'stretch',
     minHeight: 52,
     borderWidth: 1,
     borderRadius: 8,

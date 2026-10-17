@@ -4,7 +4,6 @@ import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FriendlyButton } from '@/components/app/friendly-button';
 import { GardenFrame } from '@/components/app/garden-frame';
@@ -20,7 +19,6 @@ import { confirmAddPlant, plantDisplayName } from '@/utils/plants';
 
 export default function AddConfirmScreen() {
   const theme = useTheme();
-  const insets = useSafeAreaInsets();
   const { preview, setPreview } = useAddPlant();
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -75,17 +73,17 @@ export default function AddConfirmScreen() {
           style={[
             styles.previewBanner,
             {
-              paddingTop: insets.top + Spacing.two,
-              backgroundColor: theme.woodOuter,
-              borderBottomColor: theme.woodEdge,
+              paddingTop: Spacing.two,
+              backgroundColor: theme.backgroundElement,
+              borderBottomColor: theme.border,
             },
           ]}>
           <SymbolView
-            tintColor={theme.woodEdge}
+            tintColor={theme.textSecondary}
             name={{ ios: 'info.circle', android: 'info', web: 'info' }}
             size={18}
           />
-          <ThemedText type="small" style={[styles.previewCopy, { color: theme.woodEdge }]} numberOfLines={1}>
+          <ThemedText type="small" style={[styles.previewCopy, { color: theme.textSecondary }]} numberOfLines={1}>
             {matchPercent != null
               ? `Preview — ${matchPercent}% photo match. Not in your garden yet.`
               : 'Preview — this plant is not in your garden yet.'}

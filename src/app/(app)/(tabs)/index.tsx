@@ -1,6 +1,6 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Alert, FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { Alert, FlatList, StyleSheet, View } from 'react-native';
 
 import { FriendlyButton } from '@/components/app/friendly-button';
 import { GardenFrame } from '@/components/app/garden-frame';
@@ -8,27 +8,18 @@ import { PlantCard } from '@/components/inventory/plant-card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
-import { useAuth } from '@/context/auth';
 import { useOnboarding } from '@/context/onboarding';
 import { useTheme } from '@/hooks/use-theme';
-import { deleteUserPlant, getPollenBalance, listUserPlants, type InventoryPlant } from '@/utils/plants';
+import { deleteUserPlant, listUserPlants, type InventoryPlant } from '@/utils/plants';
 import { listWateredPlantIds, markPlantsWatered } from '@/utils/watering';
 
 function errorText(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
 
-function formatPollen(value: number) {
-  if (value >= 10) {
-    return Math.round(value).toLocaleString();
-  }
-  return value.toFixed(1);
-}
-
 export default function GardenScreen() {
   const theme = useTheme();
   const { profile } = useOnboarding();
-  const { signOut } = useAuth();
   const [plants, setPlants] = useState<InventoryPlant[]>([]);
   const [wateredIds, setWateredIds] = useState<Set<string>>(new Set());
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -36,17 +27,11 @@ export default function GardenScreen() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [pollenCm3, setPollenCm3] = useState<number | null>(null);
 
   const loadPlants = useCallback(async () => {
     setError(null);
     try {
       setPlants(await listUserPlants());
-      try {
-        setPollenCm3(await getPollenBalance());
-      } catch {
-        setPollenCm3(null);
-      }
     } catch (loadError) {
       setError(errorText(loadError, 'Could not load your plants'));
       setLoading(false);
@@ -143,26 +128,9 @@ export default function GardenScreen() {
   return (
     <ThemedView style={styles.screen}>
       <View style={styles.content}>
-        <View style={styles.topRow}>
-          <View style={styles.hello}>
-            <ThemedText type="small" themeColor="textSecondary">
-              Garden Grid
-            </ThemedText>
-            <ThemedText type="heading">Garden</ThemedText>
-            <ThemedText themeColor="textSecondary">{subtitle}</ThemedText>
-            <ThemedText type="small" themeColor="textSecondary">
-              {pollenCm3 == null ? 'Pollen …' : `Pollen ${formatPollen(pollenCm3)} cm³`}
-            </ThemedText>
-          </View>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => void signOut()}
-            hitSlop={8}
-            style={({ pressed }) => [pressed && styles.pressed]}>
-            <ThemedText type="small" themeColor="textSecondary">
-              Log out
-            </ThemedText>
-          </Pressable>
+        <View style={styles.hello}>
+          <ThemedText type="heading">Garden</ThemedText>
+          <ThemedText themeColor="textSecondary">{subtitle}</ThemedText>
         </View>
 
         {plants.length > 0 ? (
@@ -263,18 +231,12 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '100%',
     maxWidth: MaxContentWidth,
-    paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.four,
-    gap: Spacing.three,
-  },
-  topRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
+    alignSelf: 'center',
+    paddingHorizontal: Spacing.three,
+    paddingTop: Spacing.three,
     gap: Spacing.three,
   },
   hello: {
-    flex: 1,
     gap: Spacing.half,
   },
   actions: {
@@ -290,8 +252,5 @@ const styles = StyleSheet.create({
   empty: {
     gap: Spacing.three,
     padding: Spacing.four,
-  },
-  pressed: {
-    opacity: 0.6,
   },
 });

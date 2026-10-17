@@ -1,9 +1,10 @@
 import { useFocusEffect } from 'expo-router';
 import { memo, useCallback, useMemo, useRef, useState } from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View, type ViewStyle } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { CURRENCY_BAR_BODY } from '@/components/app/currency-bar';
 import { GardenFrame } from '@/components/app/garden-frame';
 import { PlantToken } from '@/components/grid/plant-token';
 import { ThemedText } from '@/components/themed-text';
@@ -88,7 +89,6 @@ export default function GridScreen() {
     plotLine: theme.plotLine,
     plotHover: theme.plotHover,
     label: theme.plotLabel,
-    shadow: theme.shadow,
   };
   const { user } = useAuth();
   const [plants, setPlants] = useState<InventoryPlant[]>([]);
@@ -140,7 +140,8 @@ export default function GridScreen() {
     const innerWidth = Math.max(0, areaWidth - chrome);
     const tabBar = 52 + insets.bottom;
     const trayFloor = compact ? 124 : 168;
-    const chromeVertical = insets.top + tabBar + headerHeight + (compact ? 16 : 28) + trayFloor;
+    const chromeVertical =
+      insets.top + CURRENCY_BAR_BODY + tabBar + headerHeight + (compact ? 16 : 28) + trayFloor;
     const maxFrameHeight = Math.max(168, windowHeight - chromeVertical);
     const maxInnerHeight = Math.max(GARDEN_MIN_CELL * GARDEN_ROWS, maxFrameHeight - chrome);
 
@@ -291,7 +292,7 @@ export default function GridScreen() {
           style={[
             styles.content,
             {
-              paddingTop: insets.top + (compact ? Spacing.two : Spacing.three),
+              paddingTop: compact ? Spacing.two : Spacing.three,
               paddingHorizontal: compact ? Spacing.three : Spacing.four,
               gap: compact ? Spacing.one : Spacing.two,
             },
@@ -299,9 +300,6 @@ export default function GridScreen() {
           <View
             style={styles.header}
             onLayout={(event) => setHeaderHeight(event.nativeEvent.layout.height)}>
-            <ThemedText type="small" themeColor="textSecondary">
-              Garden Grid
-            </ThemedText>
             <ThemedText type="heading">Grid</ThemedText>
             {compact ? (
               <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
@@ -334,13 +332,12 @@ export default function GridScreen() {
                 {
                   backgroundColor: bed.woodOuter,
                   borderColor: bed.woodEdge,
-                  ...frameShadow(bed.shadow),
                 },
               ]}>
               <View
                 style={[
                   styles.frameInner,
-                  { backgroundColor: bed.wood, borderColor: bed.woodEdge, padding: framePad },
+                  { backgroundColor: bed.soil, borderColor: bed.woodEdge, padding: framePad },
                 ]}>
                 <View
                   style={[
@@ -486,7 +483,6 @@ const GardenSlotCell = memo(function GardenSlotCell({
     plotLine: string;
     plotHover: string;
     label: string;
-    shadow: string;
   };
   selected: boolean;
   highlighted: boolean;
@@ -527,7 +523,7 @@ const GardenSlotCell = memo(function GardenSlotCell({
         plant ? styles.slotFilled : null,
         {
           backgroundColor: highlighted ? bed.plotHover : bed.plot,
-          borderColor: selected || highlighted ? bed.woodOuter : bed.plotLine,
+          borderColor: selected || highlighted ? bed.wood : bed.plotLine,
         },
         (selected || highlighted) && { borderWidth: 2 },
         pressed && styles.pressed,
@@ -608,21 +604,6 @@ const InventoryItem = memo(function InventoryItem({
     </GestureDetector>
   );
 });
-
-function frameShadow(color: string): ViewStyle {
-  return (
-    Platform.select({
-      web: { boxShadow: `0px 6px 12px ${color}` },
-      default: {
-        shadowColor: color,
-        shadowOffset: { width: 0, height: 6 },
-        shadowOpacity: 1,
-        shadowRadius: 12,
-        elevation: 6,
-      },
-    }) ?? {}
-  );
-}
 
 const styles = StyleSheet.create({
   screen: {

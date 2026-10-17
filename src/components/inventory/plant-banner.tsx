@@ -1,7 +1,6 @@
 import { Image } from 'expo-image';
 import { SymbolView } from 'expo-symbols';
 import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { NeedsWaterBubble } from '@/components/inventory/needs-water-bubble';
 import { ThemedText } from '@/components/themed-text';
@@ -13,6 +12,9 @@ function bannerType(width: number) {
   }
   if (width >= 768) {
     return { name: 52, nameLine: 60, scientific: 20, scientificLine: 26, banner: 380 };
+  }
+  if (width < 500) {
+    return { name: 28, nameLine: 34, scientific: 14, scientificLine: 18, banner: 200 };
   }
   return { name: 32, nameLine: 38, scientific: 15, scientificLine: 20, banner: 260 };
 }
@@ -31,10 +33,8 @@ export function PlantBanner({
   name,
   scientificName,
   needsWater = false,
-  flushTop = false,
   onBack,
 }: PlantBannerProps) {
-  const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const type = bannerType(width);
 
@@ -42,7 +42,7 @@ export function PlantBanner({
     <View
       style={[
         styles.banner,
-        { minHeight: type.banner, paddingTop: flushTop ? Spacing.two : insets.top + Spacing.two },
+        { minHeight: type.banner, paddingTop: Spacing.three },
       ]}>
       {photoUrl ? (
         <Image source={{ uri: photoUrl }} style={StyleSheet.absoluteFill} contentFit="cover" />
@@ -66,7 +66,7 @@ export function PlantBanner({
 
       {needsWater ? (
         <NeedsWaterBubble
-          style={{ top: (flushTop ? Spacing.two : insets.top + Spacing.two) + 4, right: Spacing.four }}
+          style={{ top: Spacing.three + 4, right: Spacing.four }}
         />
       ) : null}
 
@@ -94,7 +94,7 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.four,
   },
   placeholder: {
-    backgroundColor: '#6E4E3A',
+    backgroundColor: '#EEEEEE',
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
@@ -115,7 +115,7 @@ const styles = StyleSheet.create({
   },
   name: {
     color: '#FFFFFF',
-    fontWeight: 800,
+    fontWeight: 600,
   },
   scientific: {
     color: 'rgba(255, 255, 255, 0.88)',
