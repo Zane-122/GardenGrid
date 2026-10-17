@@ -45,6 +45,19 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="water"
+        options={{
+          title: 'Water',
+          tabBarIcon: ({ color, size }) => (
+            <SymbolView
+              name={{ ios: 'calendar', android: 'calendar_month', web: 'calendar_month' }}
+              tintColor={color}
+              size={size}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="add"
         options={{
           title: 'Add',

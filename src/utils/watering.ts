@@ -44,6 +44,31 @@ function asError(error: { message?: string } | null, fallback: string) {
   return new Error(error?.message || fallback);
 }
 
+export type WateringLog = {
+  plantId: string;
+  wateredOn: string;
+};
+
+export async function listWateringLogs(from: string, to: string) {
+  const userId = await requireUserId();
+  const { data, error } = await supabase
+    .from('plant_watering_logs')
+    .select('plant_id, watered_on')
+    .eq('user_id', userId)
+    .gte('watered_on', from)
+    .lte('watered_on', to)
+    .order('watered_on', { ascending: true });
+
+  if (error) {
+    throw asError(error, 'Could not load watering logs');
+  }
+
+  return (data ?? []).map((row) => ({
+    plantId: String(row.plant_id),
+    wateredOn: String(row.watered_on),
+  })) satisfies WateringLog[];
+}
+
 export async function listWateredPlantIds(wateredOn = localDateKey()) {
   const userId = await requireUserId();
   const { data, error } = await supabase
