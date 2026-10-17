@@ -4,6 +4,7 @@ import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 import { hoursToCredit, plantHoursToCredit } from '../_shared/accrue-hours.ts';
 import { json } from '../_shared/plants.ts';
 import { calculateHourlyOxygen } from '../_shared/oxygen-calc.ts';
+import { plantPhotoFreshness } from '../_shared/observation-freshness.ts';
 import { getPlantStatus, type LatestObservation } from '../_shared/plant-status.ts';
 
 /** Weather-derived light level (0-1) will replace this; until then every plant gets full light. */
@@ -64,7 +65,7 @@ async function loadUserIds(admin: SupabaseClient): Promise<string[]> {
 
 /**
  * Oxygen (mL) the user's plants produce over `hours`, with each plant's hours
- * limited to the time since its created_at.
+ * limited to the time since its created_at and scaled by photo freshness.
  */
 async function accruedOxygenMl(admin: SupabaseClient, userId: string, now: Date, hours: number): Promise<number> {
   const { data: plants, error } = await admin
@@ -88,13 +89,29 @@ async function accruedOxygenMl(admin: SupabaseClient, userId: string, now: Date,
         throw new Error(`Failed to load health info for plant ${plant.id}: ${observationError.message}`);
       }
 
+      // Latest real photo analysis (baseline rows have a null estimated_fullness_pct).
+      const { data: lastPhoto, error: lastPhotoError } = await admin
+        .from('plant_health_info')
+        .select('observed_at')
+        .eq('plant_id', plant.id)
+        .not('estimated_fullness_pct', 'is', null)
+        .order('observed_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (lastPhotoError) {
+        throw new Error(`Failed to load last photo for plant ${plant.id}: ${lastPhotoError.message}`);
+      }
+
       const basicInfo = Array.isArray(plant.plant_basic_info) ? plant.plant_basic_info[0] : plant.plant_basic_info;
       const status = getPlantStatus(plant, basicInfo, observation as LatestObservation | null, now);
       if (!status) {
         return 0;
       }
       const plantHours = plantHoursToCredit(hours, plant.created_at, now);
-      return calculateHourlyOxygen(status.leafAreaCm2, status.healthScore, LIGHT_FACTOR_PLACEHOLDER) * plantHours;
+      const freshness = plantPhotoFreshness(lastPhoto?.observed_at, plant.created_at, now);
+      return (
+        calculateHourlyOxygen(status.leafAreaCm2, status.healthScore, LIGHT_FACTOR_PLACEHOLDER) * plantHours * freshness
+      );
     })
   );
 

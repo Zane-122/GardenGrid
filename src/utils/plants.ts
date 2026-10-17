@@ -492,7 +492,7 @@ export async function listUserPlants() {
   })) satisfies InventoryPlant[];
 }
 
-export async function getPollenBalance() {
+export async function getCurrencyBalances() {
   const {
     data: { user },
     error: userError,
@@ -501,12 +501,12 @@ export async function getPollenBalance() {
     throw userError;
   }
   if (!user) {
-    return 0;
+    return { pollen: 0, oxygen: 0 };
   }
 
   const { data, error } = await supabase
     .from('user_currency')
-    .select('pollen')
+    .select('pollen, oxygen')
     .eq('user_id', user.id)
     .maybeSingle();
 
@@ -515,7 +515,11 @@ export async function getPollenBalance() {
   }
 
   const pollen = Number(data?.pollen ?? 0);
-  return Number.isFinite(pollen) ? pollen : 0;
+  const oxygen = Number(data?.oxygen ?? 0);
+  return {
+    pollen: Number.isFinite(pollen) ? pollen : 0,
+    oxygen: Number.isFinite(oxygen) ? oxygen : 0,
+  };
 }
 
 export async function deleteUserPlant(id: string) {

@@ -7,6 +7,7 @@ import {
   pollenIntervalElapsed,
   pollenVolumeCm3,
 } from '../_shared/flower-pollen.ts';
+import { plantPhotoFreshness } from '../_shared/observation-freshness.ts';
 import { getPlantStatus, type LatestObservation } from '../_shared/plant-status.ts';
 
 const POLLEN_ACCRUAL_SECRET = 'kR7mQ2vL9pX4nW8sT1cY6bH3dF5aJ0eU';
@@ -14,12 +15,13 @@ const POLLEN_ACCRUAL_SECRET = 'kR7mQ2vL9pX4nW8sT1cY6bH3dF5aJ0eU';
 type PlantRow = {
   id: string;
   user_id: string;
+  created_at: string;
   flower_ratio: number | null;
   pollen_per_flower_cm3: number | null;
   last_pollen_credited_at: string | null;
 };
 
-type HealthRow = LatestObservation & { plant_id: string };
+type HealthRow = LatestObservation & { plant_id: string; estimated_fullness_pct: number | null };
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -57,7 +59,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: plantRows, error: plantError } = await admin
     .from('plants')
-    .select('id, user_id, flower_ratio, pollen_per_flower_cm3, last_pollen_credited_at')
+    .select('id, user_id, created_at, flower_ratio, pollen_per_flower_cm3, last_pollen_credited_at')
     .not('flower_ratio', 'is', null);
 
   if (plantError) {
@@ -72,7 +74,7 @@ Deno.serve(async (req: Request) => {
   const { data: healthRows, error: healthError } = await admin
     .from('plant_health_info')
     .select(
-      'plant_id, observed_at, resolved_x_position, estimated_health_score, growth_mode, l, k, x0, xg, kg, ks, xs, f, r, cycle_length, b_base, l_season'
+      'plant_id, observed_at, estimated_fullness_pct, resolved_x_position, estimated_health_score, growth_mode, l, k, x0, xg, kg, ks, xs, f, r, cycle_length, b_base, l_season'
     )
     .in('plant_id', plants.map((plant) => plant.id))
     .order('observed_at', { ascending: false });
@@ -85,6 +87,15 @@ Deno.serve(async (req: Request) => {
   for (const row of (healthRows ?? []) as HealthRow[]) {
     if (!latest.has(row.plant_id)) {
       latest.set(row.plant_id, row);
+    }
+  }
+
+  // Rows are newest-first, so the first non-null-fullness row per plant is its
+  // last real photo analysis (baseline rows have null fullness).
+  const lastPhoto = new Map<string, string>();
+  for (const row of (healthRows ?? []) as HealthRow[]) {
+    if (row.estimated_fullness_pct != null && !lastPhoto.has(row.plant_id)) {
+      lastPhoto.set(row.plant_id, row.observed_at);
     }
   }
 
@@ -104,7 +115,9 @@ Deno.serve(async (req: Request) => {
     if (due) {
       plantUpdate.last_pollen_credited_at = now.toISOString();
       if (plant.last_pollen_credited_at != null) {
-        const volume = pollenVolumeCm3(flowers, plant.pollen_per_flower_cm3 ?? 0);
+        const volume =
+          pollenVolumeCm3(flowers, plant.pollen_per_flower_cm3 ?? 0) *
+          plantPhotoFreshness(lastPhoto.get(plant.id), plant.created_at, now);
         if (volume > 0) {
           credits.set(plant.user_id, (credits.get(plant.user_id) ?? 0) + volume);
         }
