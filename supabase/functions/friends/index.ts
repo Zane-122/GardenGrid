@@ -128,6 +128,43 @@ async function listRequests(admin: SupabaseClient, userId: string) {
     .map((row) => toRequest(row, userId, profiles));
 }
 
+type LeaderRow = {
+  id: string;
+  username: string | null;
+  display_name: string | null;
+  total_oxygen: number | string | null;
+  total_pollen: number | string | null;
+};
+
+function asAmount(value: unknown) {
+  const amount = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(amount) ? amount : 0;
+}
+
+async function listLeaderboard(admin: SupabaseClient, userId: string, friendIds: string[]) {
+  const ids = [...new Set([userId, ...friendIds])];
+  const { data, error } = await admin
+    .from('profiles')
+    .select('id, username, display_name, total_oxygen, total_pollen')
+    .in('id', ids);
+
+  if (error) {
+    throw json({ error: `Failed to load the leaderboard: ${error.message}` }, 500);
+  }
+
+  return ((data ?? []) as LeaderRow[]).map((row) => {
+    const username = row.username?.trim() || 'unknown';
+    return {
+      id: row.id,
+      username,
+      displayName: row.display_name?.trim() || username,
+      totalOxygen: asAmount(row.total_oxygen),
+      totalPollen: asAmount(row.total_pollen),
+      you: row.id === userId,
+    };
+  });
+}
+
 async function findProfile(admin: SupabaseClient, username: string) {
   const { data, error } = await admin
     .from('profiles')
@@ -267,7 +304,14 @@ Deno.serve(async (req: Request) => {
     const action = body.action;
 
     if (action === 'list') {
-      return json({ requests: await listRequests(admin, user.id) });
+      const requests = await listRequests(admin, user.id);
+      const friendIds = requests
+        .filter((request) => request.status === 'approved')
+        .map((request) => request.person.id);
+      return json({
+        requests,
+        leaderboard: await listLeaderboard(admin, user.id, friendIds),
+      });
     }
 
     if (action === 'send') {

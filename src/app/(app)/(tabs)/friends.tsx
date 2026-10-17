@@ -15,7 +15,38 @@ import {
   respondToFriendRequest,
   sendFriendRequest,
   type FriendRequest,
+  type LeaderboardEntry,
 } from '@/utils/friends';
+
+function formatAmount(value: number) {
+  if (!Number.isFinite(value)) {
+    return '0';
+  }
+  if (value >= 10) {
+    return Math.round(value).toLocaleString();
+  }
+  return value.toFixed(1);
+}
+
+function ranked(entries: LeaderboardEntry[], amount: (entry: LeaderboardEntry) => number) {
+  const sorted = [...entries].sort((a, b) => {
+    const difference = amount(b) - amount(a);
+    if (difference !== 0) {
+      return difference;
+    }
+    return a.displayName.localeCompare(b.displayName);
+  });
+
+  let previousAmount: number | null = null;
+  let previousRank = 0;
+  return sorted.map((entry, index) => {
+    const value = amount(entry);
+    const rank = value === previousAmount ? previousRank : index + 1;
+    previousAmount = value;
+    previousRank = rank;
+    return { entry, rank, value };
+  });
+}
 
 function errorText(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
@@ -25,6 +56,7 @@ export default function FriendsScreen() {
   const theme = useTheme();
   const [username, setUsername] = useState('');
   const [requests, setRequests] = useState<FriendRequest[]>([]);
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -34,7 +66,9 @@ export default function FriendsScreen() {
   const load = useCallback(async () => {
     setError(null);
     try {
-      setRequests(await listFriendRequests());
+      const listed = await listFriendRequests();
+      setRequests(listed.requests);
+      setLeaderboard(listed.leaderboard);
     } catch (loadError) {
       setError(errorText(loadError, 'Could not load friends'));
     } finally {
@@ -85,6 +119,8 @@ export default function FriendsScreen() {
     }
   }
 
+  const oxygenBoard = ranked(leaderboard, (entry) => entry.totalOxygen);
+  const pollenBoard = ranked(leaderboard, (entry) => entry.totalPollen);
   const incoming = requests.filter((request) => request.status === 'pending' && request.direction === 'incoming');
   const outgoing = requests.filter((request) => request.status === 'pending' && request.direction === 'outgoing');
   const friends = requests.filter((request) => request.status === 'approved');
@@ -117,6 +153,21 @@ export default function FriendsScreen() {
         {error ? <ThemedText style={{ color: theme.danger }}>{error}</ThemedText> : null}
         {notice ? <ThemedText style={{ color: theme.primary }}>{notice}</ThemedText> : null}
 
+        <Leaderboard
+          title="Most oxygen"
+          unit="mL"
+          rows={oxygenBoard}
+          loading={loading}
+          highlight={theme.backgroundSelected}
+        />
+        <Leaderboard
+          title="Most pollen"
+          unit="cm³"
+          rows={pollenBoard}
+          loading={loading}
+          highlight={theme.backgroundSelected}
+        />
+
         <Section title="Requests for you" empty="No pending requests." items={incoming}>
           {(request) => (
             <View style={styles.actions}>
@@ -140,6 +191,54 @@ export default function FriendsScreen() {
         <Section title="Friends" empty="No friends yet." items={friends} />
       </ScrollView>
     </ThemedView>
+  );
+}
+
+function Leaderboard({
+  title,
+  unit,
+  rows,
+  loading,
+  highlight,
+}: {
+  title: string;
+  unit: string;
+  rows: Array<{ entry: LeaderboardEntry; rank: number; value: number }>;
+  loading: boolean;
+  highlight: string;
+}) {
+  return (
+    <View style={styles.section}>
+      <ThemedText type="smallBold">{title}</ThemedText>
+      {loading ? (
+        <ThemedText themeColor="textSecondary">Loading…</ThemedText>
+      ) : rows.length === 0 ? (
+        <ThemedText themeColor="textSecondary">No scores yet.</ThemedText>
+      ) : (
+        rows.map(({ entry, rank, value }) => (
+          <GardenFrame
+            key={entry.id}
+            style={entry.you ? { backgroundColor: highlight } : undefined}
+            contentStyle={styles.rankRow}>
+            <ThemedText type="smallBold" style={styles.rank}>
+              {rank}
+            </ThemedText>
+            <View style={styles.person}>
+              <ThemedText type="smallBold" numberOfLines={1}>
+                {entry.displayName}
+                {entry.you ? ' (you)' : ''}
+              </ThemedText>
+              <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+                @{entry.username}
+              </ThemedText>
+            </View>
+            <ThemedText type="smallBold" numberOfLines={1}>
+              {formatAmount(value)} {unit}
+            </ThemedText>
+          </GardenFrame>
+        ))
+      )}
+    </View>
   );
 }
 
@@ -202,7 +301,18 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   person: {
+    flex: 1,
+    minWidth: 0,
     gap: Spacing.half,
+  },
+  rankRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  rank: {
+    width: 24,
+    textAlign: 'center',
   },
   actions: {
     flexDirection: 'row',

@@ -16,8 +16,23 @@ export type FriendRequest = {
   };
 };
 
+export type LeaderboardEntry = {
+  id: string;
+  username: string;
+  displayName: string;
+  totalOxygen: number;
+  totalPollen: number;
+  you: boolean;
+};
+
 type FriendsResponse = {
   requests?: FriendRequest[];
+  leaderboard?: LeaderboardEntry[];
+};
+
+export type FriendsList = {
+  requests: FriendRequest[];
+  leaderboard: LeaderboardEntry[];
 };
 
 async function functionErrorMessage(error: unknown) {
@@ -61,9 +76,12 @@ async function invokeFriends<T>(body: Record<string, unknown>) {
   return data;
 }
 
-export async function listFriendRequests() {
+export async function listFriendRequests(): Promise<FriendsList> {
   const data = await invokeFriends<FriendsResponse>({ action: 'list' });
-  return data?.requests ?? [];
+  return {
+    requests: data?.requests ?? [],
+    leaderboard: data?.leaderboard ?? [],
+  };
 }
 
 export async function sendFriendRequest(username: string) {
