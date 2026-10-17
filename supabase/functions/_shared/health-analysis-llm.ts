@@ -24,9 +24,12 @@ function buildPrompt(scientificName: string | null): string {
 
 Estimate two things:
 
-1. fullness_pct: how full/mature this plant's canopy looks, as a percentage
-   (0-100) of what a typical mature specimen of this species looks like.
-   0 = bare soil/no visible growth, 100 = full mature canopy.
+1. fullness_pct: the amount of green leaf coverage this plant has, as a
+   percentage (0-100) compared with a healthy mature specimen of this species.
+   Count only living green leaves. Flowers, seed heads, bare stems, and dead
+   or brown leaves do NOT count toward fullness.
+   0 = no green leaves/bare soil, 100 = as much green leaf coverage as a
+   healthy mature specimen.
 
 2. health_score: how healthy this plant looks, as a percentage (0-100).
    Consider leaf color, wilting, browning, spotting, or other visible

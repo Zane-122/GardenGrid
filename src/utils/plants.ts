@@ -485,10 +485,7 @@ export async function listUserPlants() {
 }
 
 export async function deleteUserPlant(id: string) {
-  const { error } = await supabase.from('plants').delete().eq('id', id);
-  if (error) {
-    throw error;
-  }
+  await invokeFunction<{ deleted: true }>('delete-plant', { plant_id: id });
 }
 
 export async function searchPlantByName(

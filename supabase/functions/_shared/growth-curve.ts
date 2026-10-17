@@ -103,26 +103,31 @@ export function evaluateGrowthCurve(params: GrowthCurveParams, x: number): numbe
 export type SolveXForFullnessOptions = {
   /** Lower bound of the search range, in days. Defaults to 0. */
   minX?: number;
-  /** Upper bound of the search range, in days. Defaults to 3650 (10 years). */
+  /**
+   * Upper bound of the search range, in days. Defaults to cycle_length for
+   * 'cyclical' plants and 3650 (10 years) otherwise.
+   */
   maxX?: number;
-  /** Stop once the bracket width is at most this many days. Defaults to 0.01. */
+  /** Stop bisecting once the bracket width is at most this many days. Defaults to 0.01. */
   toleranceX?: number;
   /** Max bisection iterations, as a backstop against a non-converging search. */
   maxIterations?: number;
 };
 
+const SOLVE_SCAN_STEP_DAYS = 0.5;
+
 /**
- * Finds x such that evaluateGrowthCurve(params, x) / params.l ≈ fullnessPct / 100,
- * via binary search over [minX, maxX].
+ * Finds x such that evaluateGrowthCurve(params, x) / params.l ≈ fullnessPct / 100.
  *
- * Assumes fullness is monotonically non-decreasing over the search range, which
- * holds for 'woody_residual' and 'cyclical' (within a season) and for
- * 'annual_bounded' up through senescence onset. Past senescence, annual_bounded's
- * M(x) trends down toward f < 1, so the curve can turn over; if fullnessPct falls
- * in that declining region, or is unreachable within [minX, maxX] at all, this
- * will converge on *a* crossing point but not necessarily the intended one —
- * callers working with senescing curves should sanity-check the result or narrow
- * the range.
+ * Works for curves that rise and fall (annual_bounded after senescence,
+ * cyclical): it scans forward from minX in 0.5-day steps, finds the first day
+ * whose fullness reaches the target, then bisects between the last day below
+ * the target and that day. For 'cyclical' plants only [0, cycle_length] is
+ * scanned, i.e. the first cycle. If no scanned day reaches the target, it
+ * returns the scanned day whose fullness is closest to the target.
+ *
+ * Never throws and never returns null: on any error (e.g. missing params) it
+ * returns minX.
  */
 export function solveXForFullness(
   params: GrowthCurveParams,
@@ -130,39 +135,59 @@ export function solveXForFullness(
   options?: SolveXForFullnessOptions
 ): number {
   const minX = options?.minX ?? 0;
-  const maxX = options?.maxX ?? 3650;
-  const toleranceX = options?.toleranceX ?? 0.01;
-  const maxIterations = options?.maxIterations ?? 200;
 
-  const target = fullnessPct / 100;
-  const fullnessAt = (x: number) => evaluateGrowthCurve(params, x) / params.l;
+  try {
+    const toleranceX = options?.toleranceX ?? 0.01;
+    const maxIterations = options?.maxIterations ?? 200;
+    const cycleLength = params.growth_mode === 'cyclical' ? params.cycle_length : null;
+    const defaultMaxX = cycleLength != null && Number.isFinite(cycleLength) && cycleLength > 0 ? cycleLength : 3650;
+    const maxX = options?.maxX ?? defaultMaxX;
 
-  let lo = minX;
-  let hi = maxX;
-  let loValue = fullnessAt(lo);
-  const hiValue = fullnessAt(hi);
+    const target = fullnessPct / 100;
+    const fullnessAt = (x: number) => {
+      const value = evaluateGrowthCurve(params, x) / params.l;
+      return Number.isFinite(value) ? value : 0;
+    };
 
-  if (target <= loValue) {
-    return lo;
-  }
-  if (target >= hiValue) {
-    return hi;
-  }
-
-  for (let i = 0; i < maxIterations && hi - lo > toleranceX; i += 1) {
-    const mid = (lo + hi) / 2;
-    const midValue = fullnessAt(mid);
-
-    if (midValue < target) {
-      lo = mid;
-      loValue = midValue;
-    } else {
-      hi = mid;
+    let prevX = minX;
+    const startValue = fullnessAt(minX);
+    if (startValue >= target) {
+      return minX;
     }
-  }
 
-  void loValue;
-  return (lo + hi) / 2;
+    let bestX = minX;
+    let bestDiff = Math.abs(startValue - target);
+
+    for (let step = 1; minX + step * SOLVE_SCAN_STEP_DAYS <= maxX + 1e-9; step += 1) {
+      const x = minX + step * SOLVE_SCAN_STEP_DAYS;
+      const value = fullnessAt(x);
+      const diff = Math.abs(value - target);
+      if (diff < bestDiff) {
+        bestDiff = diff;
+        bestX = x;
+      }
+
+      if (value >= target) {
+        let lo = prevX;
+        let hi = x;
+        for (let i = 0; i < maxIterations && hi - lo > toleranceX; i += 1) {
+          const mid = (lo + hi) / 2;
+          if (fullnessAt(mid) < target) {
+            lo = mid;
+          } else {
+            hi = mid;
+          }
+        }
+        return (lo + hi) / 2;
+      }
+
+      prevX = x;
+    }
+
+    return bestX;
+  } catch {
+    return minX;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -230,8 +255,9 @@ if (import.meta.main) {
   // 300 days past xs, M = 1 + 2*300/1000 = 1.6, and G/P are both ~1 by then.
   check('woody_residual y(500) ~ L*1.6', evaluateGrowthCurve(woodyResidual, 500), 1000 * 1.6, 1);
 
-  // cyclical: at the season's x0 (mid-cycle inflection), the logistic term is
-  // exactly 0.5, so y = L*G(x)*(b_base/L + l_season/(2*L)).
+  // cyclical: P(x) multiplies the seasonal term and is evaluated on raw x, so
+  // y = L * G(x) * P(x) * M(x). At x = x0 the P term is exactly 0.5 and the
+  // season's logistic is also 0.5.
   const cyclical: GrowthCurveParams = {
     growth_mode: 'cyclical',
     l: 500,
@@ -244,14 +270,30 @@ if (import.meta.main) {
     l_season: 450,
   };
   const gAt60 = 1 / (1 + Math.exp(-0.3 * (60 - 10)));
+  const pAt60 = 0.5;
   check(
-    'cyclical y(60) at season inflection',
+    'cyclical y(60) = L*G*P*M at season inflection',
     evaluateGrowthCurve(cyclical, 60),
-    500 * gAt60 * (50 / 500 + 450 / 500 / 2),
+    500 * gAt60 * pAt60 * (50 / 500 + 450 / 500 / 2),
     0.01
   );
-  // One full cycle later, x_season wraps back to the same point.
-  check('cyclical y(60 + cycle_length) matches y(60)', evaluateGrowthCurve(cyclical, 60 + 365), evaluateGrowthCurve(cyclical, 60), 0.001);
+  // One full cycle later the seasonal term wraps back to the same point, but
+  // P(x) is on raw x (not periodic): P(425) = 1/(1+e^(-0.1*365)) ~ 1, not 0.5.
+  const pAt425 = 1 / (1 + Math.exp(-0.1 * (60 + 365 - 60)));
+  const gAt425 = 1 / (1 + Math.exp(-0.3 * (60 + 365 - 10)));
+  check(
+    'cyclical y(60 + cycle_length) uses raw-x P(x), so differs from y(60)',
+    evaluateGrowthCurve(cyclical, 60 + 365),
+    500 * gAt425 * pAt425 * (50 / 500 + 450 / 500 / 2),
+    0.001
+  );
+  // Once P(x) has saturated, later cycles do repeat exactly.
+  check(
+    'cyclical y(x + cycle_length) matches y(x) once P(x) ~ 1',
+    evaluateGrowthCurve(cyclical, 200 + 365),
+    evaluateGrowthCurve(cyclical, 200),
+    1
+  );
 
   // solveXForFullness: round-trip against evaluateGrowthCurve for a mode
   // that's monotonic over the whole search range.
@@ -259,4 +301,63 @@ if (import.meta.main) {
   const fullnessAtTargetX = (evaluateGrowthCurve(woodyResidual, targetX) / woodyResidual.l) * 100;
   const solvedX = solveXForFullness(woodyResidual, fullnessAtTargetX);
   check('solveXForFullness round-trips woody_residual', solvedX, targetX, 1);
+
+  const fullnessPctAt = (params: GrowthCurveParams, x: number) => (evaluateGrowthCurve(params, x) / params.l) * 100;
+  const checkInRange = (name: string, actual: number, min: number, max: number) => {
+    const pass = actual >= min && actual <= max;
+    console.log(`[${pass ? 'PASS' : 'FAIL'}] ${name}: got ${actual.toFixed(4)}, expected in [${min}, ${max}]`);
+  };
+
+  // woody_residual: a target at or below the day-0 fullness returns minX.
+  check('solveXForFullness woody 0% returns minX', solveXForFullness(woodyResidual, 0), 0, 0);
+
+  // annual_bounded: rises, then declines toward f after senescence. A target on
+  // the rising side round-trips.
+  const annualTargetX = 90;
+  check(
+    'solveXForFullness round-trips annual_bounded (rising side)',
+    solveXForFullness(annualBounded, fullnessPctAt(annualBounded, annualTargetX)),
+    annualTargetX,
+    0.5
+  );
+  // annual_bounded: a target above the curve's peak is unreachable, so the
+  // solver returns the closest day (the peak) instead of failing.
+  const annualValues = Array.from({ length: 3651 }, (_, i) => evaluateGrowthCurve(annualBounded, i) / annualBounded.l);
+  const annualPeakDay = annualValues.indexOf(Math.max(...annualValues));
+  const annualClosestX = solveXForFullness(annualBounded, 100);
+  checkInRange('solveXForFullness annual_bounded unreachable returns the peak day', annualClosestX, annualPeakDay - 1, annualPeakDay + 1);
+
+  // cyclical: l=450, k=0.15, x0=20, 50% target. The curve reaches 50% around
+  // day 25; day 3650 sits at the start of a cycle (~15%), which used to make
+  // the solver return 3650.
+  const cyclicalRegression: GrowthCurveParams = {
+    growth_mode: 'cyclical',
+    l: 450,
+    k: 0.15,
+    x0: 20,
+    xg: 0,
+    kg: 0.2,
+    cycle_length: 365,
+    b_base: 50,
+    l_season: 400,
+  };
+  const cyclicalSolved = solveXForFullness(cyclicalRegression, 50);
+  checkInRange('solveXForFullness cyclical 50% target is ~day 15-30', cyclicalSolved, 15, 30);
+  check('solveXForFullness cyclical result evaluates to 50%', fullnessPctAt(cyclicalRegression, cyclicalSolved), 50, 0.5);
+
+  // Never fails: odd targets on every mode return finite numbers.
+  for (const [label, params] of [
+    ['annual_bounded', annualBounded],
+    ['woody_residual', woodyResidual],
+    ['cyclical', cyclicalRegression],
+  ] as const) {
+    for (const pct of [-10, 0, 100, 250]) {
+      const x = solveXForFullness(params, pct);
+      console.log(`[${Number.isFinite(x) ? 'PASS' : 'FAIL'}] solveXForFullness ${label} ${pct}% is finite: ${x}`);
+    }
+  }
+
+  // Missing required params must not throw; falls back to minX.
+  const brokenCyclical = { ...cyclicalRegression, b_base: null } as GrowthCurveParams;
+  check('solveXForFullness with missing params returns minX', solveXForFullness(brokenCyclical, 50), 0, 0);
 }
