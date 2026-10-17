@@ -31,6 +31,7 @@
         "npm:expo-image@~57.0.3",
         "npm:expo-linking@~57.0.7",
         "npm:expo-location@~57.0.14",
+        "npm:expo-notifications@~57.0.14",
         "npm:expo-router@~57.0.16",
         "npm:expo-splash-screen@~57.0.8",
         "npm:expo-status-bar@~57.0.1",
