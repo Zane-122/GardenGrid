@@ -5,3 +5,6 @@ verify_jwt = true
 
 [functions.identify-plant-photo]
 verify_jwt = true
+
+[functions.delete-plant]
+verify_jwt = true
