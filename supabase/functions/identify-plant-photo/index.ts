@@ -18,6 +18,7 @@ import {
   type PlantBasicInfoRow,
 } from '../_shared/plants.ts';
 import { generateFlowerPollenParams } from '../_shared/flower-pollen.ts';
+import { estimateInitialPosition } from '../_shared/initial-estimate.ts';
 
 function encodeBase64(bytes: Uint8Array): string {
   let binary = '';
@@ -60,6 +61,11 @@ async function rememberFlowerPollen(
   } catch (error) {
     console.error('rememberFlowerPollen failed:', error);
   }
+}
+
+async function reloadPlant<T>(admin: SupabaseClient, plantId: string, fallback: T): Promise<T> {
+  const { data } = await admin.from('plants').select().eq('id', plantId).maybeSingle();
+  return (data as T | null) ?? fallback;
 }
 
 type IdentifyBody = {
@@ -116,17 +122,21 @@ Deno.serve(async (req: Request) => {
 
       const { updated_at: _updatedAt, ...info } = cachedInfo;
       const result = await saveUserPlantWithPhoto(admin, user.id, info, images[0]);
-      await rememberFlowerPollen(
-        admin,
-        result.plant.id,
-        images[0],
-        info.scientific_name,
-        info.common_names?.[0] ?? null
-      );
+      await Promise.all([
+        rememberFlowerPollen(
+          admin,
+          result.plant.id,
+          images[0],
+          info.scientific_name,
+          info.common_names?.[0] ?? null
+        ),
+        estimateInitialPosition(admin, result.plant.id, cachedInfo, images[0], result.photo.path),
+      ]);
+      const plant = await reloadPlant(admin, result.plant.id, result.plant);
 
       return json({
         added: true,
-        plant: result.plant,
+        plant,
         info: result.info,
         photo: result.photo,
         location: coordinates,
@@ -184,19 +194,24 @@ Deno.serve(async (req: Request) => {
       ? await saveUserPlantWithPhoto(admin, user.id, info, images[0])
       : { plant: null, info: await cachePlantInfo(admin, info), photo: null };
 
+    let savedPlant = result.plant;
     if (result.plant) {
-      await rememberFlowerPollen(
-        admin,
-        result.plant.id,
-        images[0],
-        info.scientific_name,
-        info.common_names?.[0] ?? null
-      );
+      await Promise.all([
+        rememberFlowerPollen(
+          admin,
+          result.plant.id,
+          images[0],
+          info.scientific_name,
+          info.common_names?.[0] ?? null
+        ),
+        estimateInitialPosition(admin, result.plant.id, result.info, images[0], result.photo?.path ?? null),
+      ]);
+      savedPlant = await reloadPlant(admin, result.plant.id, result.plant);
     }
 
     return json({
       added: shouldSave,
-      plant: result.plant,
+      plant: savedPlant,
       info: result.info,
       photo: result.photo ?? null,
       location: coordinates,
