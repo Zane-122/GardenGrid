@@ -9,6 +9,9 @@ verify_jwt = true
 [functions.delete-plant]
 verify_jwt = true
 
+[functions.friends]
+verify_jwt = true
+
 # Called by pg_cron with the pollen accrual secret, not a user JWT.
 [functions.accrue-pollen]
 verify_jwt = false
