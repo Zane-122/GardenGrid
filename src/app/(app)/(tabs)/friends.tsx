@@ -162,7 +162,7 @@ export default function FriendsScreen() {
         />
         <Leaderboard
           title="Most pollen"
-          unit="cm³"
+          unit="mg"
           rows={pollenBoard}
           loading={loading}
           highlight={theme.backgroundSelected}

@@ -30,7 +30,7 @@ type PlantRow = {
   current_x_position: number | null;
   last_recalibrated_at: string | null;
   flower_ratio: number | null;
-  pollen_per_flower_cm3: number | null;
+  pollen_per_flower_mg: number | null;
   plant_basic_info: PlantBasicInfoRow;
 };
 
@@ -239,8 +239,8 @@ Deno.serve(async (req: Request) => {
 
     const plantAgeInDays = daysBetween(plant.created_at, now);
     const previousFlower: FlowerPollenConstants | null =
-      plant.flower_ratio != null && plant.pollen_per_flower_cm3 != null
-        ? { flower_ratio: plant.flower_ratio, pollen_per_flower_cm3: plant.pollen_per_flower_cm3 }
+      plant.flower_ratio != null && plant.pollen_per_flower_mg != null
+        ? { flower_ratio: plant.flower_ratio, pollen_per_flower_mg: plant.pollen_per_flower_mg }
         : null;
     const flowerPromise = generateFlowerPollenParams(
       imageBase64,
@@ -294,7 +294,7 @@ Deno.serve(async (req: Request) => {
     }
     if (flowerParams) {
       plantUpdate.flower_ratio = flowerParams.flower_ratio;
-      plantUpdate.pollen_per_flower_cm3 = flowerParams.pollen_per_flower_cm3;
+      plantUpdate.pollen_per_flower_mg = flowerParams.pollen_per_flower_mg;
     }
 
     const { data: updatedPlant, error: updateError } = await admin
@@ -345,7 +345,7 @@ Deno.serve(async (req: Request) => {
         ...(flowerParams
           ? {
               flower_ratio: flowerParams.flower_ratio,
-              pollen_per_flower_cm3: flowerParams.pollen_per_flower_cm3,
+              pollen_per_flower_mg: flowerParams.pollen_per_flower_mg,
             }
           : {}),
       })

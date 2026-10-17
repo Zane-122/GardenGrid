@@ -54,7 +54,7 @@ export type UserPlant = {
   last_recalibrated_at: string | null;
   current_x_position: number | null;
   flower_ratio: number | null;
-  pollen_per_flower_cm3: number | null;
+  pollen_per_flower_mg: number | null;
   flower_count: number | null;
   flower_count_updated_at: string | null;
 };
@@ -456,7 +456,7 @@ export async function listUserPlants() {
   const { data, error } = await supabase
     .from('plants')
     .select(
-      'id, user_id, plant_id, created_at, photo_path, last_recalibrated_at, current_x_position, flower_ratio, pollen_per_flower_cm3, flower_count, flower_count_updated_at, info:plant_basic_info(*)'
+      'id, user_id, plant_id, created_at, photo_path, last_recalibrated_at, current_x_position, flower_ratio, pollen_per_flower_mg, flower_count, flower_count_updated_at, info:plant_basic_info(*)'
     )
     .eq('user_id', user.id)
     .order('created_at', { ascending: false });
@@ -475,7 +475,7 @@ export async function listUserPlants() {
       last_recalibrated_at: (row.last_recalibrated_at as string | null) ?? null,
       current_x_position: (row.current_x_position as number | null) ?? null,
       flower_ratio: (row.flower_ratio as number | null) ?? null,
-      pollen_per_flower_cm3: (row.pollen_per_flower_cm3 as number | null) ?? null,
+      pollen_per_flower_mg: (row.pollen_per_flower_mg as number | null) ?? null,
       flower_count: (row.flower_count as number | null) ?? null,
       flower_count_updated_at: (row.flower_count_updated_at as string | null) ?? null,
       info: (Array.isArray(row.info) ? row.info[0] : row.info) as PlantBasicInfo | null,

@@ -206,7 +206,7 @@ export default function PlantDetailScreen() {
             {plant?.flower_ratio != null ? (
               <ThemedText type="small" themeColor="textSecondary">
                 {plant.flower_ratio.toFixed(4)} flowers per cm² of leaf ·{' '}
-                {plant.pollen_per_flower_cm3?.toFixed(3) ?? '0'} cm³ pollen per flower every 8 hours
+                {plant.pollen_per_flower_mg?.toFixed(1) ?? '0'} mg pollen per flower every 8 hours
               </ThemedText>
             ) : null}
           </GardenFrame>

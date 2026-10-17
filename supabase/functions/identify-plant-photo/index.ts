@@ -51,7 +51,7 @@ async function rememberFlowerPollen(
       .from('plants')
       .update({
         flower_ratio: constants.flower_ratio,
-        pollen_per_flower_cm3: constants.pollen_per_flower_cm3,
+        pollen_per_flower_mg: constants.pollen_per_flower_mg,
       })
       .eq('id', plantId);
     if (error) {

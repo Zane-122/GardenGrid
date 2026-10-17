@@ -5,7 +5,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
 import {
   flowerCountFromLeafArea,
   pollenIntervalElapsed,
-  pollenVolumeCm3,
+  pollenMassMg,
 } from '../_shared/flower-pollen.ts';
 import { plantPhotoFreshness } from '../_shared/observation-freshness.ts';
 import { getPlantStatus, type LatestObservation } from '../_shared/plant-status.ts';
@@ -17,7 +17,7 @@ type PlantRow = {
   user_id: string;
   created_at: string;
   flower_ratio: number | null;
-  pollen_per_flower_cm3: number | null;
+  pollen_per_flower_mg: number | null;
   last_pollen_credited_at: string | null;
 };
 
@@ -59,7 +59,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: plantRows, error: plantError } = await admin
     .from('plants')
-    .select('id, user_id, created_at, flower_ratio, pollen_per_flower_cm3, last_pollen_credited_at')
+    .select('id, user_id, created_at, flower_ratio, pollen_per_flower_mg, last_pollen_credited_at')
     .not('flower_ratio', 'is', null);
 
   if (plantError) {
@@ -115,11 +115,11 @@ Deno.serve(async (req: Request) => {
     if (due) {
       plantUpdate.last_pollen_credited_at = now.toISOString();
       if (plant.last_pollen_credited_at != null) {
-        const volume =
-          pollenVolumeCm3(flowers, plant.pollen_per_flower_cm3 ?? 0) *
+        const massMg =
+          pollenMassMg(flowers, plant.pollen_per_flower_mg ?? 0) *
           plantPhotoFreshness(lastPhoto.get(plant.id), plant.created_at, now);
-        if (volume > 0) {
-          credits.set(plant.user_id, (credits.get(plant.user_id) ?? 0) + volume);
+        if (massMg > 0) {
+          credits.set(plant.user_id, (credits.get(plant.user_id) ?? 0) + massMg);
         }
         credited += 1;
       }

@@ -7,8 +7,8 @@ import { lowercaseKeys } from './json-utils.ts';
 export type FlowerPollenConstants = {
   /** Flowers per cm² of leaf area. 0 means the plant is not flowering. */
   flower_ratio: number;
-  /** Cubic centimeters of pollen one flower produces over 8 hours. */
-  pollen_per_flower_cm3: number;
+  /** Milligrams of pollen one flower produces over 8 hours. */
+  pollen_per_flower_mg: number;
 };
 
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
@@ -23,11 +23,11 @@ export function flowerCountFromLeafArea(leafAreaCm2: number, flowerRatio: number
   return leafAreaCm2 * flowerRatio;
 }
 
-export function pollenVolumeCm3(flowerCount: number, pollenPerFlowerCm3: number) {
-  if (!Number.isFinite(flowerCount) || flowerCount <= 0 || !Number.isFinite(pollenPerFlowerCm3) || pollenPerFlowerCm3 <= 0) {
+export function pollenMassMg(flowerCount: number, pollenPerFlowerMg: number) {
+  if (!Number.isFinite(flowerCount) || flowerCount <= 0 || !Number.isFinite(pollenPerFlowerMg) || pollenPerFlowerMg <= 0) {
     return 0;
   }
-  return flowerCount * pollenPerFlowerCm3;
+  return flowerCount * pollenPerFlowerMg;
 }
 
 export function pollenIntervalElapsed(lastCreditedAt: string | null, now: Date) {
@@ -49,7 +49,7 @@ function buildPrompt(
   const species = scientificName?.trim() || 'Unknown';
   const common = commonName?.trim() || 'Unknown';
   const previousText = previous
-    ? `Previous constants for this plant: flower_ratio=${previous.flower_ratio}, pollen_per_flower_cm3=${previous.pollen_per_flower_cm3}. CORRECT them from this photo. These are constants, not a curve. If the plant looks about the same, keep both numbers close to the previous values. Change them only when the photo clearly shows more flowers, fewer flowers, or a different pollen yield.`
+    ? `Previous constants for this plant: flower_ratio=${previous.flower_ratio}, pollen_per_flower_mg=${previous.pollen_per_flower_mg}. CORRECT them from this photo. These are constants, not a curve. If the plant looks about the same, keep both numbers close to the previous values. Change them only when the photo clearly shows more flowers, fewer flowers, or a different pollen yield.`
     : 'This plant has no previous constants. Estimate them from the species and what you can see in the photo.';
 
   return `You are looking at a photo of a plant (species: ${species}, common name: ${common}).
@@ -57,11 +57,11 @@ function buildPrompt(
 Estimate two constants for pollen the plant produces. Do not estimate leaf area or a growth curve.
 
 - flower_ratio: number of flowers per cm² of leaf area. 0 if the plant has no flowers. A typical garden plant in bloom is about 0.001 to 0.05.
-- pollen_per_flower_cm3: cubic centimeters of pollen one open flower produces over ${POLLEN_INTERVAL_HOURS} hours. 0 if there are no flowers. Typical values are about 0.01 to 2.
+- pollen_per_flower_mg: milligrams of pollen one open flower produces over ${POLLEN_INTERVAL_HOURS} hours. This is mg divided by the number of flowers. 0 if there are no flowers. Typical values are about 10 to 2000.
 
 ${previousText}
 
-Return only valid JSON: {"flower_ratio": number, "pollen_per_flower_cm3": number}`;
+Return only valid JSON: {"flower_ratio": number, "pollen_per_flower_mg": number}`;
 }
 
 function asFiniteNumber(value: unknown): number | null {
@@ -81,17 +81,17 @@ export function validateFlowerPollenConstants(raw: unknown): FlowerPollenConstan
   }
   const record = raw as Record<string, unknown>;
   const flowerRatio = asFiniteNumber(record.flower_ratio);
-  const pollenPerFlower = asFiniteNumber(record.pollen_per_flower_cm3);
+  const pollenPerFlower = asFiniteNumber(record.pollen_per_flower_mg);
   if (flowerRatio == null || flowerRatio < 0 || flowerRatio > 1) {
     return null;
   }
-  if (pollenPerFlower == null || pollenPerFlower < 0 || pollenPerFlower > 20) {
+  if (pollenPerFlower == null || pollenPerFlower < 0 || pollenPerFlower > 20000) {
     return null;
   }
   if (flowerRatio === 0) {
-    return { flower_ratio: 0, pollen_per_flower_cm3: 0 };
+    return { flower_ratio: 0, pollen_per_flower_mg: 0 };
   }
-  return { flower_ratio: flowerRatio, pollen_per_flower_cm3: pollenPerFlower };
+  return { flower_ratio: flowerRatio, pollen_per_flower_mg: pollenPerFlower };
 }
 
 export async function generateFlowerPollenParams(

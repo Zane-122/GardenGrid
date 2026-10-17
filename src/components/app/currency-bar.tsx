@@ -38,7 +38,7 @@ export function CurrencyBar() {
     }, [load])
   );
 
-  const pollenAmount = balances == null ? '…' : `${formatAmount(balances.pollen)} cm³`;
+  const pollenAmount = balances == null ? '…' : `${formatAmount(balances.pollen)} mg`;
   const oxygenAmount = balances == null ? '…' : `${formatAmount(balances.oxygen)} mL`;
 
   return (
