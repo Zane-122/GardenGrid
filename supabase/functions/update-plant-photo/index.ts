@@ -14,6 +14,7 @@ import { generateGrowthParamsFromPhoto } from '../_shared/growth-params-from-pho
 import type { GeneratedGrowthParams } from '../_shared/growth-params-llm.ts';
 import { solveXForFullness, type GrowthCurveParams } from '../_shared/growth-curve.ts';
 import { paramsFromObservation, predictFullnessPct, type LatestObservation } from '../_shared/plant-status.ts';
+import { generateFlowerPollenParams, type FlowerPollenConstants } from '../_shared/flower-pollen.ts';
 
 type UpdatePlantPhotoBody = {
   plant_id?: string;
@@ -28,6 +29,8 @@ type PlantRow = {
   photo_path: string | null;
   current_x_position: number | null;
   last_recalibrated_at: string | null;
+  flower_ratio: number | null;
+  pollen_per_flower_cm3: number | null;
   plant_basic_info: PlantBasicInfoRow;
 };
 
@@ -235,6 +238,17 @@ Deno.serve(async (req: Request) => {
     }
 
     const plantAgeInDays = daysBetween(plant.created_at, now);
+    const previousFlower: FlowerPollenConstants | null =
+      plant.flower_ratio != null && plant.pollen_per_flower_cm3 != null
+        ? { flower_ratio: plant.flower_ratio, pollen_per_flower_cm3: plant.pollen_per_flower_cm3 }
+        : null;
+    const flowerPromise = generateFlowerPollenParams(
+      imageBase64,
+      contentType,
+      basicInfo.scientific_name,
+      basicInfo.common_names?.[0] ?? null,
+      previousFlower
+    );
 
     const photoGrowthParams = await generateGrowthParamsFromPhoto(
       imageBase64,
@@ -271,10 +285,16 @@ Deno.serve(async (req: Request) => {
 
     const resolvedXPosition = growthParams ? solveXForFullness(growthParams, health.fullness_pct) : null;
 
+    const flowerParams = await flowerPromise;
+
     const plantUpdate: Record<string, unknown> = { photo_path: photoResult.path };
     if (resolvedXPosition != null) {
       plantUpdate.current_x_position = resolvedXPosition;
       plantUpdate.last_recalibrated_at = now.toISOString();
+    }
+    if (flowerParams) {
+      plantUpdate.flower_ratio = flowerParams.flower_ratio;
+      plantUpdate.pollen_per_flower_cm3 = flowerParams.pollen_per_flower_cm3;
     }
 
     const { data: updatedPlant, error: updateError } = await admin
@@ -320,6 +340,12 @@ Deno.serve(async (req: Request) => {
               b_base: paramsToSave.b_base,
               l_season: paramsToSave.l_season,
               carbon_fraction: paramsToSave.carbon_fraction,
+            }
+          : {}),
+        ...(flowerParams
+          ? {
+              flower_ratio: flowerParams.flower_ratio,
+              pollen_per_flower_cm3: flowerParams.pollen_per_flower_cm3,
             }
           : {}),
       })

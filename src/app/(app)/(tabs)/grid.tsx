@@ -1,6 +1,6 @@
 import { useFocusEffect } from 'expo-router';
 import { memo, useCallback, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View, type ViewStyle } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -334,7 +334,7 @@ export default function GridScreen() {
                 {
                   backgroundColor: bed.woodOuter,
                   borderColor: bed.woodEdge,
-                  shadowColor: bed.shadow,
+                  ...frameShadow(bed.shadow),
                 },
               ]}>
               <View
@@ -609,6 +609,21 @@ const InventoryItem = memo(function InventoryItem({
   );
 });
 
+function frameShadow(color: string): ViewStyle {
+  return (
+    Platform.select({
+      web: { boxShadow: `0px 6px 12px ${color}` },
+      default: {
+        shadowColor: color,
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 1,
+        shadowRadius: 12,
+        elevation: 6,
+      },
+    }) ?? {}
+  );
+}
+
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
@@ -635,10 +650,6 @@ const styles = StyleSheet.create({
     padding: 3,
     borderWidth: 1,
     borderRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 1,
-    shadowRadius: 12,
-    elevation: 6,
   },
   frameInner: {
     width: '100%',

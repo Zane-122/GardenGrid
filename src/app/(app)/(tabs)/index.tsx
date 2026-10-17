@@ -11,11 +11,18 @@ import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/auth';
 import { useOnboarding } from '@/context/onboarding';
 import { useTheme } from '@/hooks/use-theme';
-import { deleteUserPlant, listUserPlants, type InventoryPlant } from '@/utils/plants';
+import { deleteUserPlant, getPollenBalance, listUserPlants, type InventoryPlant } from '@/utils/plants';
 import { listWateredPlantIds, markPlantsWatered } from '@/utils/watering';
 
 function errorText(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
+}
+
+function formatPollen(value: number) {
+  if (value >= 10) {
+    return Math.round(value).toLocaleString();
+  }
+  return value.toFixed(1);
 }
 
 export default function GardenScreen() {
@@ -29,11 +36,17 @@ export default function GardenScreen() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [pollenCm3, setPollenCm3] = useState<number | null>(null);
 
   const loadPlants = useCallback(async () => {
     setError(null);
     try {
       setPlants(await listUserPlants());
+      try {
+        setPollenCm3(await getPollenBalance());
+      } catch {
+        setPollenCm3(null);
+      }
     } catch (loadError) {
       setError(errorText(loadError, 'Could not load your plants'));
       setLoading(false);
@@ -137,6 +150,9 @@ export default function GardenScreen() {
             </ThemedText>
             <ThemedText type="heading">Garden</ThemedText>
             <ThemedText themeColor="textSecondary">{subtitle}</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              {pollenCm3 == null ? 'Pollen …' : `Pollen ${formatPollen(pollenCm3)} cm³`}
+            </ThemedText>
           </View>
           <Pressable
             accessibilityRole="button"
