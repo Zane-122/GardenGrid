@@ -149,6 +149,8 @@ export default function ShopScreen() {
         ) : (
           catalog.map((item) => {
             const imageUrl = shopItemImageUrl(item.image_path);
+            const wide = item.footprint_cols * item.footprint_rows > 1;
+            const lamp = item.slug === 'light';
             return (
               <GardenFrame key={item.id} contentStyle={styles.itemOffer}>
                 {imageUrl ? (
@@ -156,9 +158,10 @@ export default function ShopScreen() {
                     source={{ uri: imageUrl }}
                     style={[
                       styles.itemImage,
-                      item.footprint_cols * item.footprint_rows > 1 ? styles.itemImageWide : null,
+                      wide ? styles.itemImageWide : null,
+                      lamp ? styles.itemImageLamp : null,
                     ]}
-                    contentFit={item.footprint_cols * item.footprint_rows > 1 ? 'contain' : 'cover'}
+                    contentFit={wide || lamp ? 'contain' : 'cover'}
                   />
                 ) : null}
                 <View style={styles.itemCopy}>
@@ -437,6 +440,9 @@ const styles = StyleSheet.create({
   },
   itemImageWide: {
     width: 112,
+    backgroundColor: 'transparent',
+  },
+  itemImageLamp: {
     backgroundColor: 'transparent',
   },
   itemCopy: {

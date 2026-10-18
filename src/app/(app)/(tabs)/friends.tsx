@@ -4,6 +4,7 @@ import { ScrollView, StyleSheet, View } from 'react-native';
 
 import { FriendlyButton } from '@/components/app/friendly-button';
 import { GardenFrame } from '@/components/app/garden-frame';
+import { FriendGardenModal } from '@/components/grid/friend-garden-modal';
 import { OnboardingTextField } from '@/components/onboarding/onboarding-text-field';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -62,6 +63,7 @@ export default function FriendsScreen() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [viewing, setViewing] = useState<{ id: string; displayName: string } | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -188,8 +190,13 @@ export default function FriendsScreen() {
 
         <Section title="Sent" empty="You have not sent any requests." items={outgoing} />
 
-        <Section title="Friends" empty="No friends yet." items={friends} />
+        <Section title="Friends" empty="No friends yet." items={friends}>
+          {(request) => (
+            <FriendlyButton label="View garden" onPress={() => setViewing(request.person)} />
+          )}
+        </Section>
       </ScrollView>
+      <FriendGardenModal friend={viewing} onClose={() => setViewing(null)} />
     </ThemedView>
   );
 }

@@ -24,6 +24,7 @@ export type OwnedShopItem = {
   col: number | null;
   row: number | null;
   name: string;
+  slug: string;
   image_path: string;
   footprint_cols: number;
   footprint_rows: number;
@@ -103,7 +104,7 @@ export async function listShopItems() {
 export async function listOwnedShopItems() {
   const { data, error } = await supabase
     .from('user_shop_items')
-    .select('id, user_id, shop_item_id, garden_tile_id, rotation, item:shop_items(name, image_path, footprint_cols, footprint_rows), tile:garden_tiles!user_shop_items_garden_tile_id_fkey(col, row)')
+    .select('id, user_id, shop_item_id, garden_tile_id, rotation, item:shop_items(slug, name, image_path, footprint_cols, footprint_rows), tile:garden_tiles!user_shop_items_garden_tile_id_fkey(col, row)')
     .order('created_at', { ascending: true });
 
   if (error) {
@@ -121,6 +122,7 @@ export async function listOwnedShopItems() {
       col: tile?.col == null ? null : Number(tile.col),
       row: tile?.row == null ? null : Number(tile.row),
       name: String(item?.name ?? 'Item'),
+      slug: String(item?.slug ?? ''),
       image_path: String(item?.image_path ?? ''),
       footprint_cols: Number(item?.footprint_cols ?? 1),
       footprint_rows: Number(item?.footprint_rows ?? 1),

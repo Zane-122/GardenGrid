@@ -14,6 +14,7 @@ type PlantTokenProps = {
   selected?: boolean;
   needsWater?: boolean;
   labelVisible?: boolean;
+  fillWidth?: boolean;
 };
 
 export function PlantToken({
@@ -23,6 +24,7 @@ export function PlantToken({
   selected = false,
   needsWater = false,
   labelVisible = true,
+  fillWidth = false,
 }: PlantTokenProps) {
   const theme = useTheme();
   const name = plantDisplayName(plant.info);
@@ -76,6 +78,7 @@ export function PlantToken({
         selected && { borderWidth: 2 },
         placed && { opacity: 0.72 },
         !labelVisible && styles.compactImageOnly,
+        fillWidth && styles.fillWidth,
       ]}>
       {image}
       {labelVisible ? (
@@ -113,6 +116,9 @@ const styles = StyleSheet.create({
   },
   compactImageOnly: {
     height: 72,
+  },
+  fillWidth: {
+    width: '100%',
   },
   slotImage: {
     position: 'absolute',
