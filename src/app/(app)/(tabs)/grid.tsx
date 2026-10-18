@@ -44,7 +44,7 @@ import {
   plantDisplayName,
   type InventoryPlant,
 } from "@/utils/plants";
-import { listWateredPlantIds } from "@/utils/watering";
+import { listLatestWateringDates, plantWateringSchedule } from "@/utils/watering";
 
 const TRAY_COLLAPSED_HEIGHT = 56;
 const TRAY_OPEN_HEIGHT = 270;
@@ -127,7 +127,7 @@ export default function GridScreen() {
   };
   const { user } = useAuth();
   const [plants, setPlants] = useState<InventoryPlant[]>([]);
-  const [wateredIds, setWateredIds] = useState<Set<string>>(new Set());
+  const [latestWatered, setLatestWatered] = useState<Map<string, string>>(new Map());
   const [slots, setSlots] = useState<GardenSlot[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -227,7 +227,7 @@ export default function GridScreen() {
       setPlants(nextPlants);
       setSlots(nextSlots);
       try {
-        setWateredIds(await listWateredPlantIds());
+        setLatestWatered(await listLatestWateringDates());
       } catch (waterError) {
         setError(
           waterError instanceof Error
@@ -488,7 +488,11 @@ export default function GridScreen() {
                                   index={index}
                                   plant={plant}
                                   needsWater={
-                                    plant != null && !wateredIds.has(plant.id)
+                                    plant != null &&
+                                    plantWateringSchedule(
+                                      plant,
+                                      latestWatered.get(plant.id) ?? null,
+                                    ).needsWater
                                   }
                                   bed={bed}
                                   selected={
@@ -593,7 +597,10 @@ export default function GridScreen() {
                       <InventoryItem
                         key={plant.id}
                         plant={plant}
-                        needsWater={!wateredIds.has(plant.id)}
+                        needsWater={
+                          plantWateringSchedule(plant, latestWatered.get(plant.id) ?? null)
+                            .needsWater
+                        }
                         placed={placedIndex != null}
                         selected={selectedPlantId === plant.id}
                         dragging={drag?.plantId === plant.id}
@@ -628,7 +635,12 @@ export default function GridScreen() {
             <PlantToken
               plant={draggingPlant}
               compact
-              needsWater={!wateredIds.has(draggingPlant.id)}
+              needsWater={
+                plantWateringSchedule(
+                  draggingPlant,
+                  latestWatered.get(draggingPlant.id) ?? null,
+                ).needsWater
+              }
             />
           </View>
         ) : null}

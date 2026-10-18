@@ -32,6 +32,7 @@ import {
   formatWateredOn,
   getPlantWateringStatus,
   markPlantsWatered,
+  wateringFrequencyLabel,
   type PlantWateringStatus,
 } from '@/utils/watering';
 
@@ -43,6 +44,21 @@ function seasonLabel(multiplier: number) {
     return 'Peak season, so pollen is emitted in full.';
   }
   return `This time of year emits ${Math.round(multiplier * 100)}% of peak pollen.`;
+}
+
+function wateringStatusCopy(status: PlantWateringStatus) {
+  if (status.intervalDays == null || status.nextWateringOn == null) {
+    return 'Plant.id did not include a watering index, so this plant is not on a schedule.';
+  }
+
+  const cadence = `${wateringFrequencyLabel(status.intervalDays)}, starting ${formatWateredOn(status.startDate)}.`;
+  if (status.needsWater) {
+    return `${cadence} Needs water today.`;
+  }
+  if (status.wateredToday) {
+    return `${cadence} Watered today. Next watering ${formatWateredOn(status.nextWateringOn)}.`;
+  }
+  return `${cadence} Next watering ${formatWateredOn(status.nextWateringOn)}.`;
 }
 
 function formatLastUpdated(lastRecalibratedAt: string | null | undefined) {
@@ -79,7 +95,7 @@ export default function PlantDetailScreen() {
         setPlant(found);
         const [nextObservation, nextWatering] = await Promise.all([
           found ? latestPlantGrowthObservation(found.id) : Promise.resolve(null),
-          found ? getPlantWateringStatus(found.id) : Promise.resolve(null),
+          found ? getPlantWateringStatus(found) : Promise.resolve(null),
         ]);
         setObservation(nextObservation);
         setWateringStatus(nextWatering);
@@ -129,7 +145,7 @@ export default function PlantDetailScreen() {
     setError(null);
     try {
       await markPlantsWatered([plant.id]);
-      setWateringStatus(await getPlantWateringStatus(plant.id));
+      setWateringStatus(await getPlantWateringStatus(plant));
     } catch (markError) {
       setError(markError instanceof Error ? markError.message : 'Could not mark this plant as watered');
     } finally {
@@ -201,7 +217,7 @@ export default function PlantDetailScreen() {
           photoUrl={plant ? plantImageUrl(plant) : null}
           name={name}
           scientificName={scientificName}
-          needsWater={plant != null && wateringStatus != null && !wateringStatus.wateredToday}
+          needsWater={wateringStatus?.needsWater === true}
           onBack={() => router.back()}
         />
 
@@ -241,13 +257,7 @@ export default function PlantDetailScreen() {
             <WateringPanel watering={plant?.info?.watering} />
             {plant && wateringStatus ? (
               <View style={styles.wateringStatus}>
-                <ThemedText themeColor="textSecondary">
-                  {wateringStatus.wateredToday
-                    ? 'Watered today.'
-                    : wateringStatus.lastWateredOn
-                      ? `Last watered ${formatWateredOn(wateringStatus.lastWateredOn)}.`
-                      : 'No watering logged yet.'}
-                </ThemedText>
+                <ThemedText themeColor="textSecondary">{wateringStatusCopy(wateringStatus)}</ThemedText>
                 <FriendlyButton
                   label={
                     wateringStatus.wateredToday

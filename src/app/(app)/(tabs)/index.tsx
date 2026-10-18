@@ -1,5 +1,5 @@
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Alert, FlatList, StyleSheet, View } from 'react-native';
 
 import { FriendlyButton } from '@/components/app/friendly-button';
@@ -11,7 +11,7 @@ import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useOnboarding } from '@/context/onboarding';
 import { useTheme } from '@/hooks/use-theme';
 import { deleteUserPlant, listUserPlants, type InventoryPlant } from '@/utils/plants';
-import { listWateredPlantIds, markPlantsWatered } from '@/utils/watering';
+import { listLatestWateringDates, localDateKey, markPlantsWatered, plantWateringSchedule } from '@/utils/watering';
 
 function errorText(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
@@ -21,7 +21,7 @@ export default function GardenScreen() {
   const theme = useTheme();
   const { profile } = useOnboarding();
   const [plants, setPlants] = useState<InventoryPlant[]>([]);
-  const [wateredIds, setWateredIds] = useState<Set<string>>(new Set());
+  const [latestWatered, setLatestWatered] = useState<Map<string, string>>(new Map());
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selecting, setSelecting] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -39,8 +39,7 @@ export default function GardenScreen() {
     }
 
     try {
-      const nextWatered = await listWateredPlantIds();
-      setWateredIds(nextWatered);
+      setLatestWatered(await listLatestWateringDates());
       setSelectedIds(new Set());
       setSelecting(false);
     } catch (loadError) {
@@ -76,7 +75,13 @@ export default function GardenScreen() {
     ]);
   }
 
-  const needsWaterIds = plants.filter((plant) => !wateredIds.has(plant.id)).map((plant) => plant.id);
+  const needsWaterIds = useMemo(
+    () =>
+      plants
+        .filter((plant) => plantWateringSchedule(plant, latestWatered.get(plant.id) ?? null).needsWater)
+        .map((plant) => plant.id),
+    [latestWatered, plants]
+  );
   const firstName = profile?.displayName?.split(' ')[0];
   const subtitle = loading
     ? 'Loading plants…'
@@ -85,8 +90,8 @@ export default function GardenScreen() {
         ? `Welcome back, ${firstName}.`
         : 'Your garden is empty.'
       : needsWaterIds.length === 0
-        ? `${plants.length} plant${plants.length === 1 ? '' : 's'} · all watered today`
-        : `${needsWaterIds.length} plant${needsWaterIds.length === 1 ? '' : 's'} still need water`;
+        ? 'Nothing needs water today.'
+        : `${needsWaterIds.length} plant${needsWaterIds.length === 1 ? '' : 's'} need water`;
 
   function toggleSelected(plantId: string) {
     setSelectedIds((current) => {
@@ -109,10 +114,11 @@ export default function GardenScreen() {
     setError(null);
     try {
       await markPlantsWatered(plantIds);
-      setWateredIds((current) => {
-        const next = new Set(current);
+      const today = localDateKey();
+      setLatestWatered((current) => {
+        const next = new Map(current);
         for (const plantId of plantIds) {
-          next.add(plantId);
+          next.set(plantId, today);
         }
         return next;
       });
@@ -193,7 +199,7 @@ export default function GardenScreen() {
             )
           }
           renderItem={({ item }) => {
-            const needsWater = !wateredIds.has(item.id);
+            const needsWater = needsWaterIds.includes(item.id);
             return (
               <PlantCard
                 plant={item}

@@ -9,7 +9,14 @@ import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { listUserPlants, plantDisplayName, type InventoryPlant } from '@/utils/plants';
-import { listWateringLogs, localDateKey } from '@/utils/watering';
+import {
+  isScheduledWateringDay,
+  listLatestWateringDates,
+  listWateringLogs,
+  localDateKey,
+  plantWateringSchedule,
+  type PlantWateringStatus,
+} from '@/utils/watering';
 
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'] as const;
 
@@ -64,6 +71,7 @@ export default function WateringCalendarScreen() {
   const [selected, setSelected] = useState(today);
   const [plants, setPlants] = useState<InventoryPlant[]>([]);
   const [logsByDay, setLogsByDay] = useState<Record<string, string[]>>({});
+  const [schedules, setSchedules] = useState<Map<string, PlantWateringStatus>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -72,20 +80,29 @@ export default function WateringCalendarScreen() {
     const from = localDateKey(new Date(year, month, 1));
     const to = localDateKey(new Date(year, month + 1, 0));
     try {
-      const [nextPlants, logs] = await Promise.all([listUserPlants(), listWateringLogs(from, to)]);
+      const [nextPlants, logs, latestWatered] = await Promise.all([
+        listUserPlants(),
+        listWateringLogs(from, to),
+        listLatestWateringDates(),
+      ]);
       const grouped: Record<string, string[]> = {};
       for (const log of logs) {
         grouped[log.wateredOn] ??= [];
         grouped[log.wateredOn].push(log.plantId);
       }
+      const nextSchedules = new Map<string, PlantWateringStatus>();
+      for (const plant of nextPlants) {
+        nextSchedules.set(plant.id, plantWateringSchedule(plant, latestWatered.get(plant.id) ?? null, today));
+      }
       setPlants(nextPlants);
       setLogsByDay(grouped);
+      setSchedules(nextSchedules);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Could not load the watering calendar');
     } finally {
       setLoading(false);
     }
-  }, [month, year]);
+  }, [month, today, year]);
 
   useFocusEffect(
     useCallback(() => {
@@ -114,6 +131,18 @@ export default function WateringCalendarScreen() {
   const wateredPlants = wateredIds
     .map((id) => plantsById.get(id))
     .filter((plant): plant is InventoryPlant => plant != null);
+  const scheduledPlants = plants.filter((plant) => {
+    const schedule = schedules.get(plant.id);
+    return schedule != null && isScheduledWateringDay(schedule, selected) && !wateredIds.includes(plant.id);
+  });
+
+  function scheduledIdsOn(dateKey: string) {
+    const watered = new Set(logsByDay[dateKey] ?? []);
+    return plants.filter((plant) => {
+      const schedule = schedules.get(plant.id);
+      return schedule != null && isScheduledWateringDay(schedule, dateKey) && !watered.has(plant.id);
+    });
+  }
 
   return (
     <ThemedView style={styles.screen}>
@@ -121,7 +150,9 @@ export default function WateringCalendarScreen() {
         <View style={styles.hello}>
           <ThemedText type="heading">Watering</ThemedText>
           <ThemedText themeColor="textSecondary">
-            {loading ? 'Loading the month…' : 'Days you marked plants as watered.'}
+            {loading
+              ? 'Loading the month…'
+              : 'Filled dots are days you watered. Open dots are upcoming waterings.'}
           </ThemedText>
         </View>
 
@@ -177,14 +208,15 @@ export default function WateringCalendarScreen() {
                   return <View key={`empty-${weekIndex}-${dayIndex}`} style={styles.day} />;
                 }
 
-                const count = logsByDay[dateKey]?.length ?? 0;
+                const wateredCount = logsByDay[dateKey]?.length ?? 0;
+                const scheduledCount = scheduledIdsOn(dateKey).length;
                 const isSelected = dateKey === selected;
                 const isToday = dateKey === today;
                 return (
                   <Pressable
                     key={dateKey}
                     accessibilityRole="button"
-                    accessibilityLabel={`${dayTitle(dateKey)}, ${count} watered`}
+                    accessibilityLabel={`${dayTitle(dateKey)}, ${wateredCount} watered, ${scheduledCount} scheduled`}
                     accessibilityState={{ selected: isSelected }}
                     onPress={() => setSelected(dateKey)}
                     style={({ pressed }) => [
@@ -194,15 +226,19 @@ export default function WateringCalendarScreen() {
                     ]}>
                     <ThemedText
                       type="smallBold"
-                      style={isToday ? { color: theme.info } : undefined}
+                      style={isToday ? { color: theme.oxygen } : undefined}
                       themeColor={isSelected ? 'text' : undefined}>
                       {dayNumber(dateKey)}
                     </ThemedText>
-                    {count > 0 ? (
-                      <View style={[styles.mark, { backgroundColor: theme.primary }]} />
-                    ) : (
-                      <View style={styles.markSpacer} />
-                    )}
+                    <View style={styles.marks}>
+                      {wateredCount > 0 ? (
+                        <View style={[styles.mark, { backgroundColor: theme.primary }]} />
+                      ) : null}
+                      {scheduledCount > 0 ? (
+                        <View style={[styles.mark, styles.scheduledMark, { borderColor: theme.oxygen }]} />
+                      ) : null}
+                      {wateredCount === 0 && scheduledCount === 0 ? <View style={styles.markSpacer} /> : null}
+                    </View>
                   </Pressable>
                 );
               })}
@@ -212,22 +248,39 @@ export default function WateringCalendarScreen() {
 
         <GardenFrame variant="bed" fill style={styles.detailFrame} contentStyle={styles.detail}>
           <ThemedText type="smallBold">{dayTitle(selected)}</ThemedText>
-          {wateredPlants.length === 0 ? (
-            <ThemedText themeColor="textSecondary">No plants were marked watered.</ThemedText>
+          {wateredPlants.length === 0 && scheduledPlants.length === 0 ? (
+            <ThemedText themeColor="textSecondary">
+              {selected < today ? 'No plants were marked watered.' : 'No plants are scheduled.'}
+            </ThemedText>
           ) : (
-            <>
-              <ThemedText themeColor="textSecondary">
-                {wateredPlants.length} plant{wateredPlants.length === 1 ? '' : 's'} watered
-              </ThemedText>
-              <ScrollView style={styles.plantList} contentContainerStyle={styles.plantListContent}>
-                {wateredPlants.map((plant) => (
-                  <View key={plant.id} style={styles.plantRow}>
-                    <View style={[styles.drop, { backgroundColor: theme.primary }]} />
-                    <ThemedText>{plantDisplayName(plant.info)}</ThemedText>
-                  </View>
-                ))}
-              </ScrollView>
-            </>
+            <ScrollView style={styles.plantList} contentContainerStyle={styles.plantListContent}>
+              {scheduledPlants.length > 0 ? (
+                <ThemedText themeColor="textSecondary">
+                  {selected < today
+                    ? `${scheduledPlants.length} missed`
+                    : selected === today
+                      ? `${scheduledPlants.length} need water`
+                      : `${scheduledPlants.length} scheduled`}
+                </ThemedText>
+              ) : null}
+              {scheduledPlants.map((plant) => (
+                <View key={`due-${plant.id}`} style={styles.plantRow}>
+                  <View style={[styles.drop, styles.scheduledDrop, { borderColor: theme.oxygen }]} />
+                  <ThemedText>{plantDisplayName(plant.info)}</ThemedText>
+                </View>
+              ))}
+              {wateredPlants.length > 0 ? (
+                <ThemedText themeColor="textSecondary">
+                  {wateredPlants.length} watered
+                </ThemedText>
+              ) : null}
+              {wateredPlants.map((plant) => (
+                <View key={plant.id} style={styles.plantRow}>
+                  <View style={[styles.drop, { backgroundColor: theme.primary }]} />
+                  <ThemedText>{plantDisplayName(plant.info)}</ThemedText>
+                </View>
+              ))}
+            </ScrollView>
           )}
         </GardenFrame>
       </View>
@@ -294,10 +347,21 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'transparent',
   },
+  marks: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+    minHeight: 6,
+  },
   mark: {
     width: 6,
     height: 6,
     borderRadius: 3,
+  },
+  scheduledMark: {
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
   },
   markSpacer: {
     width: 6,
@@ -324,6 +388,10 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
+  },
+  scheduledDrop: {
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
   },
   pressed: {
     opacity: 0.7,
