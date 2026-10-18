@@ -4,11 +4,12 @@ import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 import { hoursToCredit, plantHoursToCredit } from '../_shared/accrue-hours.ts';
 import { json } from '../_shared/plants.ts';
 import { calculateHourlyOxygen } from '../_shared/oxygen-calc.ts';
+import { fetchHourlyGardenWeather } from '../_shared/open-meteo.ts';
 import { plantPhotoFreshness } from '../_shared/observation-freshness.ts';
 import { getPlantStatus, type LatestObservation } from '../_shared/plant-status.ts';
+import { estimatedSunlightIndex, latestSunlightIndex } from '../_shared/sunlight-index.ts';
 
-/** Weather-derived light level (0-1) will replace this; until then every plant gets full light. */
-export const LIGHT_FACTOR_PLACEHOLDER = 1;
+const MS_PER_HOUR = 3_600_000;
 
 const PAGE_SIZE = 1000;
 
@@ -64,10 +65,57 @@ async function loadUserIds(admin: SupabaseClient): Promise<string[]> {
 }
 
 /**
- * Oxygen (mL) the user's plants produce over `hours`, with each plant's hours
- * limited to the time since its created_at and scaled by photo freshness.
+ * Latest hourly sunlight index at or before `now`. If that reading is missing,
+ * estimate daylight from the time and the garden's location.
  */
-async function accruedOxygenMl(admin: SupabaseClient, userId: string, now: Date, hours: number): Promise<number> {
+async function sunlightForUser(admin: SupabaseClient, userId: string, now: Date): Promise<number> {
+  const { data, error } = await admin
+    .from('profiles')
+    .select('garden_latitude, garden_longitude')
+    .eq('id', userId)
+    .maybeSingle();
+  if (error) {
+    console.error(`accrue-oxygen: location lookup failed for ${userId}: ${error.message}`);
+    return estimatedSunlightIndex(now, null, null);
+  }
+
+  const latitude = typeof data?.garden_latitude === 'number' ? data.garden_latitude : null;
+  const longitude = typeof data?.garden_longitude === 'number' ? data.garden_longitude : null;
+  if (latitude == null || longitude == null) {
+    const estimate = estimatedSunlightIndex(now, null, null);
+    console.error(`accrue-oxygen: no garden location for ${userId}; estimating ${estimate} from the time`);
+    return estimate;
+  }
+
+  try {
+    const weather = await fetchHourlyGardenWeather(latitude, longitude);
+    const index = latestSunlightIndex(weather, now);
+    if (index == null) {
+      const estimate = estimatedSunlightIndex(now, latitude, longitude);
+      console.error(`accrue-oxygen: no sunlight readings for ${userId}; estimating ${estimate} from the time`);
+      return estimate;
+    }
+    return index;
+  } catch (error) {
+    const estimate = estimatedSunlightIndex(now, latitude, longitude);
+    console.error(`accrue-oxygen: Open-Meteo failed for ${userId}; estimating ${estimate} from the time:`, error);
+    return estimate;
+  }
+}
+
+type PlantOxygen = { plantId: string; ml: number };
+
+/**
+ * Oxygen (mL) each of the user's plants produces over `hours`, with each
+ * plant's hours limited to the time since its created_at and scaled by photo freshness.
+ */
+async function accruedOxygenByPlant(
+  admin: SupabaseClient,
+  userId: string,
+  now: Date,
+  hours: number,
+  lightFactor: number
+): Promise<PlantOxygen[]> {
   const { data: plants, error } = await admin
     .from('plants')
     .select('id, plant_id, created_at, plant_basic_info(*)')
@@ -105,17 +153,18 @@ async function accruedOxygenMl(admin: SupabaseClient, userId: string, now: Date,
       const basicInfo = Array.isArray(plant.plant_basic_info) ? plant.plant_basic_info[0] : plant.plant_basic_info;
       const status = getPlantStatus(plant, basicInfo, observation as LatestObservation | null, now);
       if (!status) {
-        return 0;
+        return { plantId: plant.id, ml: 0 };
       }
       const plantHours = plantHoursToCredit(hours, plant.created_at, now);
       const freshness = plantPhotoFreshness(lastPhoto?.observed_at, plant.created_at, now);
-      return (
-        calculateHourlyOxygen(status.leafAreaCm2, status.healthScore, LIGHT_FACTOR_PLACEHOLDER) * plantHours * freshness
-      );
+      return {
+        plantId: plant.id,
+        ml: calculateHourlyOxygen(status.leafAreaCm2, status.healthScore, lightFactor) * plantHours * freshness,
+      };
     })
   );
 
-  return perPlant.reduce((sum, ml) => sum + ml, 0);
+  return perPlant;
 }
 
 type AccrueResult = { credited: boolean; ml: number; conflicted: boolean };
@@ -132,6 +181,7 @@ async function accrueUser(admin: SupabaseClient, userId: string, now: Date): Pro
 
   const expectedLast: string | null = currency?.oxygen_accrued_at ?? null;
   let amountMl = 0;
+  let plantOxygen: PlantOxygen[] = [];
 
   if (expectedLast != null) {
     const hours = hoursToCredit(expectedLast, now);
@@ -141,7 +191,9 @@ async function accrueUser(admin: SupabaseClient, userId: string, now: Date): Pro
     if (hours <= 0) {
       return { credited: false, ml: 0, conflicted: false };
     }
-    amountMl = await accruedOxygenMl(admin, userId, now, hours);
+    const lightFactor = await sunlightForUser(admin, userId, now);
+    plantOxygen = await accruedOxygenByPlant(admin, userId, now, hours, lightFactor);
+    amountMl = plantOxygen.reduce((sum, plant) => sum + plant.ml, 0);
   }
   // No oxygen_accrued_at yet: start the clock now with no retroactive credit.
 
@@ -150,6 +202,9 @@ async function accrueUser(admin: SupabaseClient, userId: string, now: Date): Pro
     p_amount: amountMl,
     p_expected_last: expectedLast,
     p_new_last: now.toISOString(),
+    p_plant_oxygen: plantOxygen
+      .filter((plant) => plant.ml > 0)
+      .map((plant) => ({ plant_id: plant.plantId, ml: plant.ml })),
   });
   if (creditError) {
     throw new Error(`credit_oxygen failed: ${creditError.message}`);

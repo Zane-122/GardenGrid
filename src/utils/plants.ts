@@ -57,6 +57,8 @@ export type UserPlant = {
   pollen_per_flower_mg: number | null;
   flower_count: number | null;
   flower_count_updated_at: string | null;
+  oxygen_ml: number;
+  pollen_mg: number;
 };
 
 type GrowthParamFields = {
@@ -238,6 +240,26 @@ export function plantDisplayName(info: PlantBasicInfo | null | undefined, fallba
   return capitalizePlantName(
     info?.common_names?.[0] || fallback || info?.scientific_name || 'Unknown plant'
   );
+}
+
+export function formatOxygenMl(value: number) {
+  if (!Number.isFinite(value) || value <= 0) {
+    return '0 mL';
+  }
+  if (value >= 10) {
+    return `${Math.round(value).toLocaleString()} mL`;
+  }
+  return `${value.toFixed(1)} mL`;
+}
+
+export function formatPollenMg(value: number) {
+  if (!Number.isFinite(value) || value <= 0) {
+    return '0 mg';
+  }
+  if (value >= 10) {
+    return `${Math.round(value).toLocaleString()} mg`;
+  }
+  return `${value.toFixed(1)} mg`;
 }
 
 export function plantSearchLabels(match: PlantNameMatch) {
@@ -456,7 +478,7 @@ export async function listUserPlants() {
   const { data, error } = await supabase
     .from('plants')
     .select(
-      'id, user_id, plant_id, created_at, photo_path, last_recalibrated_at, current_x_position, flower_ratio, pollen_per_flower_mg, flower_count, flower_count_updated_at, info:plant_basic_info(*)'
+      'id, user_id, plant_id, created_at, photo_path, last_recalibrated_at, current_x_position, flower_ratio, pollen_per_flower_mg, flower_count, flower_count_updated_at, oxygen_ml, pollen_mg, info:plant_basic_info(*)'
     )
     .eq('user_id', user.id)
     .order('created_at', { ascending: false });
@@ -478,6 +500,8 @@ export async function listUserPlants() {
       pollen_per_flower_mg: (row.pollen_per_flower_mg as number | null) ?? null,
       flower_count: (row.flower_count as number | null) ?? null,
       flower_count_updated_at: (row.flower_count_updated_at as string | null) ?? null,
+      oxygen_ml: Number.isFinite(Number(row.oxygen_ml)) ? Number(row.oxygen_ml) : 0,
+      pollen_mg: Number.isFinite(Number(row.pollen_mg)) ? Number(row.pollen_mg) : 0,
       info: (Array.isArray(row.info) ? row.info[0] : row.info) as PlantBasicInfo | null,
     }))
     .filter((plant) => isPlantKingdom(plant.info?.taxonomy));

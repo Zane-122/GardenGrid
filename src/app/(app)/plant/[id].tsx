@@ -18,6 +18,8 @@ import {
   deleteUserPlant,
   latestPlantGrowthObservation,
   listUserPlants,
+  formatOxygenMl,
+  formatPollenMg,
   plantDisplayName,
   plantGrowthCurveParams,
   plantImageUrl,
@@ -25,12 +27,23 @@ import {
   type InventoryPlant,
   type PlantGrowthObservation,
 } from '@/utils/plants';
+import { seasonalBloomMultiplier } from '@/utils/seasonal-bloom';
 import {
   formatWateredOn,
   getPlantWateringStatus,
   markPlantsWatered,
   type PlantWateringStatus,
 } from '@/utils/watering';
+
+function seasonLabel(multiplier: number) {
+  if (multiplier <= 0) {
+    return 'Outside the bloom season, so no pollen is emitted.';
+  }
+  if (multiplier >= 0.999) {
+    return 'Peak season, so pollen is emitted in full.';
+  }
+  return `This time of year emits ${Math.round(multiplier * 100)}% of peak pollen.`;
+}
 
 function formatLastUpdated(lastRecalibratedAt: string | null | undefined) {
   if (!lastRecalibratedAt) {
@@ -197,7 +210,16 @@ export default function PlantDetailScreen() {
             <GrowthChart params={growthParams} createdAt={plant?.created_at} ageAnchor={observation?.ageAnchor ?? null} />
           </GardenFrame>
           <GardenFrame variant="bed">
+            <ThemedText type="smallBold">Oxygen</ThemedText>
+            <ThemedText themeColor="textSecondary">
+              {plant ? `${formatOxygenMl(plant.oxygen_ml)} produced` : '…'}
+            </ThemedText>
+          </GardenFrame>
+          <GardenFrame variant="bed">
             <ThemedText type="smallBold">Pollen</ThemedText>
+            <ThemedText themeColor="textSecondary">
+              {plant ? `${formatPollenMg(plant.pollen_mg)} produced` : '…'}
+            </ThemedText>
             <ThemedText themeColor="textSecondary">
               {plant?.flower_count != null
                 ? `About ${Math.round(plant.flower_count).toLocaleString()} flowers right now.`
@@ -206,7 +228,12 @@ export default function PlantDetailScreen() {
             {plant?.flower_ratio != null ? (
               <ThemedText type="small" themeColor="textSecondary">
                 {plant.flower_ratio.toFixed(4)} flowers per cm² of leaf ·{' '}
-                {plant.pollen_per_flower_mg?.toFixed(1) ?? '0'} mg pollen per flower every 8 hours
+                {plant.pollen_per_flower_mg?.toFixed(1) ?? '0'} mg pollen per flower every 8 hours at peak
+              </ThemedText>
+            ) : null}
+            {plant?.flower_ratio != null ? (
+              <ThemedText type="small" themeColor="textSecondary">
+                {seasonLabel(seasonalBloomMultiplier(new Date()))}
               </ThemedText>
             ) : null}
           </GardenFrame>

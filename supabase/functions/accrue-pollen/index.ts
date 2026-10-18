@@ -6,6 +6,7 @@ import {
   flowerCountFromLeafArea,
   pollenIntervalElapsed,
   pollenMassMg,
+  seasonalBloomMultiplier,
 } from '../_shared/flower-pollen.ts';
 import { plantPhotoFreshness } from '../_shared/observation-freshness.ts';
 import { getPlantStatus, type LatestObservation } from '../_shared/plant-status.ts';
@@ -99,7 +100,7 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  const credits = new Map<string, number>();
+  const credits = new Map<string, { plantId: string; mg: number }[]>();
   let updated = 0;
   let credited = 0;
 
@@ -117,9 +118,12 @@ Deno.serve(async (req: Request) => {
       if (plant.last_pollen_credited_at != null) {
         const massMg =
           pollenMassMg(flowers, plant.pollen_per_flower_mg ?? 0) *
-          plantPhotoFreshness(lastPhoto.get(plant.id), plant.created_at, now);
+          plantPhotoFreshness(lastPhoto.get(plant.id), plant.created_at, now) *
+          seasonalBloomMultiplier(now);
         if (massMg > 0) {
-          credits.set(plant.user_id, (credits.get(plant.user_id) ?? 0) + massMg);
+          const earned = credits.get(plant.user_id) ?? [];
+          earned.push({ plantId: plant.id, mg: massMg });
+          credits.set(plant.user_id, earned);
         }
         credited += 1;
       }
@@ -133,10 +137,12 @@ Deno.serve(async (req: Request) => {
     updated += 1;
   }
 
-  for (const [userId, amount] of credits) {
+  for (const [userId, earned] of credits) {
+    const amount = earned.reduce((sum, plant) => sum + plant.mg, 0);
     const { error: creditError } = await admin.rpc('credit_user_pollen', {
       target_user_id: userId,
       amount,
+      plant_pollen: earned.map((plant) => ({ plant_id: plant.plantId, mg: plant.mg })),
     });
     if (creditError) {
       console.error(`accrue-pollen: credit ${userId}: ${creditError.message}`);

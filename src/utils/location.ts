@@ -1,5 +1,7 @@
 import * as Location from 'expo-location';
 
+import { supabase } from '@/utils/supabase';
+
 export type GardenCoordinates = {
   latitude: number;
   longitude: number;
@@ -27,4 +29,25 @@ export async function getGardenCoordinates(): Promise<GardenCoordinates | null> 
     latitude: position.coords.latitude,
     longitude: position.coords.longitude,
   };
+}
+
+export async function saveGardenLocation(coordinates: GardenCoordinates) {
+  const {
+    data: { session },
+    error: sessionError,
+  } = await supabase.auth.getSession();
+  if (sessionError) {
+    throw sessionError;
+  }
+  if (!session?.access_token) {
+    return;
+  }
+
+  const { error } = await supabase.functions.invoke('save-garden-location', {
+    body: coordinates,
+    headers: { Authorization: `Bearer ${session.access_token}` },
+  });
+  if (error) {
+    throw error;
+  }
 }

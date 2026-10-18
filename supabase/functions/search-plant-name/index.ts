@@ -9,6 +9,7 @@ import {
   NOT_A_GARDEN_PLANT_MESSAGE,
   parseCoordinates,
   plantIdFetch,
+  rememberGardenLocation,
   requireUser,
   saveUserPlant,
   toBasicInfo,
@@ -41,6 +42,7 @@ Deno.serve(async (req: Request) => {
     const language = body.language?.trim() || 'en';
     const limit = Math.min(Math.max(body.limit ?? 10, 1), 20);
     const coordinates = parseCoordinates(body);
+    await rememberGardenLocation(admin, user.id, coordinates);
 
     if (!query && !accessToken) {
       return json({ error: 'Provide q to search, or access_token to add a plant' }, 400);

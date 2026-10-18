@@ -12,6 +12,7 @@ import {
   NOT_A_GARDEN_PLANT_MESSAGE,
   parseCoordinates,
   plantIdFetch,
+  rememberGardenLocation,
   requireUser,
   saveUserPlantWithPhoto,
   toBasicInfo,
@@ -45,20 +46,30 @@ async function rememberFlowerPollen(
       null
     );
     if (!constants) {
-      return;
+      console.error(`rememberFlowerPollen: no constants for plant ${plantId}`);
+      return null;
     }
-    const { error } = await admin
-      .from('plants')
-      .update({
-        flower_ratio: constants.flower_ratio,
-        pollen_per_flower_mg: constants.pollen_per_flower_mg,
-      })
-      .eq('id', plantId);
+    const fields = {
+      flower_ratio: constants.flower_ratio,
+      pollen_per_flower_mg: constants.pollen_per_flower_mg,
+    };
+    const { error } = await admin.from('plants').update(fields).eq('id', plantId);
     if (error) {
       console.error(`rememberFlowerPollen: ${error.message}`);
+      return null;
     }
+    const { error: healthError } = await admin
+      .from('plant_health_info')
+      .update(fields)
+      .eq('plant_id', plantId)
+      .is('flower_ratio', null);
+    if (healthError) {
+      console.error(`rememberFlowerPollen health: ${healthError.message}`);
+    }
+    return fields;
   } catch (error) {
     console.error('rememberFlowerPollen failed:', error);
+    return null;
   }
 }
 
@@ -91,6 +102,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const coordinates = parseCoordinates(body);
+    await rememberGardenLocation(admin, user.id, coordinates);
     const shouldSave = body.save !== false;
     const taxonId = typeof body.plant_id === 'string' ? body.plant_id.trim() : '';
 
@@ -116,7 +128,7 @@ Deno.serve(async (req: Request) => {
 
       const { updated_at: _updatedAt, ...info } = cachedInfo;
       const result = await saveUserPlantWithPhoto(admin, user.id, info, images[0]);
-      await rememberFlowerPollen(
+      const flower = await rememberFlowerPollen(
         admin,
         result.plant.id,
         images[0],
@@ -126,7 +138,7 @@ Deno.serve(async (req: Request) => {
 
       return json({
         added: true,
-        plant: result.plant,
+        plant: flower ? { ...result.plant, ...flower } : result.plant,
         info: result.info,
         photo: result.photo,
         location: coordinates,
@@ -184,19 +196,19 @@ Deno.serve(async (req: Request) => {
       ? await saveUserPlantWithPhoto(admin, user.id, info, images[0])
       : { plant: null, info: await cachePlantInfo(admin, info), photo: null };
 
-    if (result.plant) {
-      await rememberFlowerPollen(
-        admin,
-        result.plant.id,
-        images[0],
-        info.scientific_name,
-        info.common_names?.[0] ?? null
-      );
-    }
+    const flower = result.plant
+      ? await rememberFlowerPollen(
+          admin,
+          result.plant.id,
+          images[0],
+          info.scientific_name,
+          info.common_names?.[0] ?? null
+        )
+      : null;
 
     return json({
       added: shouldSave,
-      plant: result.plant,
+      plant: result.plant && flower ? { ...result.plant, ...flower } : result.plant,
       info: result.info,
       photo: result.photo ?? null,
       location: coordinates,
