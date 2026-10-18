@@ -1,22 +1,38 @@
 import { Tabs } from 'expo-router/js-tabs';
 import { SymbolView } from 'expo-symbols';
+import { StyleSheet } from 'react-native';
+import Animated, { interpolateColor, useAnimatedStyle } from 'react-native-reanimated';
 
+import { GardenPalette } from '@/constants/theme';
+import { gardenMix, useGardenHalfway } from '@/hooks/use-garden-mix';
 import { useTheme } from '@/hooks/use-theme';
+
+function TabBarBackground() {
+  const theme = useTheme();
+  const style = useAnimatedStyle(() => ({
+    backgroundColor: interpolateColor(gardenMix.value, [0, 1], [theme.surface, GardenPalette.bar]),
+    borderTopColor: interpolateColor(gardenMix.value, [0, 1], [theme.border, GardenPalette.barBorder]),
+  }));
+
+  return <Animated.View style={[StyleSheet.absoluteFill, styles.tabBarBackground, style]} />;
+}
 
 export default function TabsLayout() {
   const theme = useTheme();
+  const garden = useGardenHalfway();
 
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: theme.primary,
-        tabBarInactiveTintColor: theme.textSecondary,
+        tabBarActiveTintColor: garden ? GardenPalette.highlight : theme.primary,
+        tabBarInactiveTintColor: garden ? GardenPalette.barTextMuted : theme.textSecondary,
         tabBarLabelStyle: { fontWeight: '500', fontSize: 11 },
         tabBarItemStyle: { paddingHorizontal: 0 },
+        tabBarBackground: () => <TabBarBackground />,
         tabBarStyle: {
-          backgroundColor: theme.surface,
-          borderTopColor: theme.border,
+          backgroundColor: 'transparent',
+          borderTopWidth: 0,
         },
       }}>
       <Tabs.Screen
@@ -87,3 +103,9 @@ export default function TabsLayout() {
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  tabBarBackground: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+});

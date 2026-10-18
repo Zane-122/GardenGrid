@@ -117,7 +117,7 @@ export default function WateringCalendarScreen() {
 
   return (
     <ThemedView style={styles.screen}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <View style={styles.content}>
         <View style={styles.hello}>
           <ThemedText type="heading">Watering</ThemedText>
           <ThemedText themeColor="textSecondary">
@@ -131,7 +131,7 @@ export default function WateringCalendarScreen() {
           </ThemedText>
         ) : null}
 
-        <GardenFrame variant="bed" contentStyle={styles.calendar}>
+        <GardenFrame variant="bed" fill style={styles.calendarFrame} contentStyle={styles.calendar}>
           <View style={styles.monthRow}>
             <Pressable
               accessibilityRole="button"
@@ -171,7 +171,7 @@ export default function WateringCalendarScreen() {
           </View>
 
           {weeks.map((week, weekIndex) => (
-            <View key={weekIndex} style={styles.week}>
+            <View key={weekIndex} style={styles.weekRow}>
               {week.map((dateKey, dayIndex) => {
                 if (!dateKey) {
                   return <View key={`empty-${weekIndex}-${dayIndex}`} style={styles.day} />;
@@ -210,7 +210,7 @@ export default function WateringCalendarScreen() {
           ))}
         </GardenFrame>
 
-        <GardenFrame variant="bed" contentStyle={styles.detail}>
+        <GardenFrame variant="bed" fill style={styles.detailFrame} contentStyle={styles.detail}>
           <ThemedText type="smallBold">{dayTitle(selected)}</ThemedText>
           {wateredPlants.length === 0 ? (
             <ThemedText themeColor="textSecondary">No plants were marked watered.</ThemedText>
@@ -219,16 +219,18 @@ export default function WateringCalendarScreen() {
               <ThemedText themeColor="textSecondary">
                 {wateredPlants.length} plant{wateredPlants.length === 1 ? '' : 's'} watered
               </ThemedText>
-              {wateredPlants.map((plant) => (
-                <View key={plant.id} style={styles.plantRow}>
-                  <View style={[styles.drop, { backgroundColor: theme.primary }]} />
-                  <ThemedText>{plantDisplayName(plant.info)}</ThemedText>
-                </View>
-              ))}
+              <ScrollView style={styles.plantList} contentContainerStyle={styles.plantListContent}>
+                {wateredPlants.map((plant) => (
+                  <View key={plant.id} style={styles.plantRow}>
+                    <View style={[styles.drop, { backgroundColor: theme.primary }]} />
+                    <ThemedText>{plantDisplayName(plant.info)}</ThemedText>
+                  </View>
+                ))}
+              </ScrollView>
             </>
           )}
         </GardenFrame>
-      </ScrollView>
+      </View>
     </ThemedView>
   );
 }
@@ -236,22 +238,29 @@ export default function WateringCalendarScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    alignItems: 'center',
   },
   content: {
+    flex: 1,
     width: '100%',
     maxWidth: MaxContentWidth,
     alignSelf: 'center',
     paddingHorizontal: Spacing.three,
     paddingTop: Spacing.three,
-    paddingBottom: Spacing.five,
+    paddingBottom: Spacing.three,
     gap: Spacing.three,
   },
   hello: {
     gap: Spacing.half,
   },
+  calendarFrame: {
+    flex: 3,
+  },
   calendar: {
     gap: Spacing.two,
+  },
+  weekRow: {
+    flex: 1,
+    flexDirection: 'row',
   },
   monthRow: {
     flexDirection: 'row',
@@ -277,7 +286,7 @@ const styles = StyleSheet.create({
   },
   day: {
     flex: 1,
-    minHeight: 48,
+    minHeight: 32,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
@@ -294,7 +303,16 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
   },
+  detailFrame: {
+    flex: 2,
+  },
   detail: {
+    gap: Spacing.two,
+  },
+  plantList: {
+    flex: 1,
+  },
+  plantListContent: {
     gap: Spacing.two,
   },
   plantRow: {

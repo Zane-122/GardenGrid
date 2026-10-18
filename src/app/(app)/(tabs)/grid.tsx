@@ -1,17 +1,29 @@
-import { useFocusEffect } from 'expo-router';
-import { memo, useCallback, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Image } from "expo-image";
+import { useFocusEffect } from "expo-router";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  useWindowDimensions,
+  View,
+} from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 
-import { CURRENCY_BAR_BODY } from '@/components/app/currency-bar';
-import { GardenFrame } from '@/components/app/garden-frame';
-import { PlantToken } from '@/components/grid/plant-token';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { MaxContentWidth, Radius, Spacing } from '@/constants/theme';
-import { useAuth } from '@/context/auth';
-import { useTheme } from '@/hooks/use-theme';
+import { GardenFrame } from "@/components/app/garden-frame";
+import { GrassBackground } from "@/components/app/grass-background";
+import { PlantToken } from "@/components/grid/plant-token";
+import { ThemedText } from "@/components/themed-text";
+import { ThemedView } from "@/components/themed-view";
+import {
+  GardenPalette,
+  MaxContentWidth,
+  Radius,
+  Spacing,
+} from "@/constants/theme";
+import { useAuth } from "@/context/auth";
+import { useTweenedNumber } from "@/hooks/use-tweened-number";
+import { useTheme } from "@/hooks/use-theme";
 import {
   assignPlantToSlot,
   clearGardenSlot,
@@ -26,15 +38,28 @@ import {
   listGardenSlots,
   slotIndexForPlant,
   type GardenSlot,
-} from '@/utils/garden';
-import { listUserPlants, plantDisplayName, type InventoryPlant } from '@/utils/plants';
-import { listWateredPlantIds } from '@/utils/watering';
+} from "@/utils/garden";
+import {
+  listUserPlants,
+  plantDisplayName,
+  type InventoryPlant,
+} from "@/utils/plants";
+import { listWateredPlantIds } from "@/utils/watering";
+
+const TRAY_COLLAPSED_HEIGHT = 56;
+const TRAY_OPEN_HEIGHT = 270;
+const TRAY_OPEN_HEIGHT_COMPACT = 260;
 
 type Frame = { x: number; y: number; width: number; height: number };
 type DragState = { plantId: string; x: number; y: number };
 
 function contains(frame: Frame, x: number, y: number) {
-  return x >= frame.x && y >= frame.y && x <= frame.x + frame.width && y <= frame.y + frame.height;
+  return (
+    x >= frame.x &&
+    y >= frame.y &&
+    x <= frame.x + frame.width &&
+    y <= frame.y + frame.height
+  );
 }
 
 function measureView(view: View, onFrame: (frame: Frame) => void) {
@@ -45,17 +70,28 @@ function measureView(view: View, onFrame: (frame: Frame) => void) {
   });
 }
 
-function optimisticAssign(slots: GardenSlot[], plantId: string, slotIndex: number, userId: string) {
+function optimisticAssign(
+  slots: GardenSlot[],
+  plantId: string,
+  slotIndex: number,
+  userId: string,
+) {
   const from = slots.find((slot) => slot.plant_id === plantId);
   const to = slots.find((slot) => slot.slot_index === slotIndex);
   if (from?.slot_index === slotIndex) {
     return slots;
   }
 
-  const others = slots.filter((slot) => slot.plant_id !== plantId && slot.slot_index !== slotIndex);
+  const others = slots.filter(
+    (slot) => slot.plant_id !== plantId && slot.slot_index !== slotIndex,
+  );
 
   if (from && to) {
-    return [...others, { ...from, slot_index: slotIndex }, { ...to, slot_index: from.slot_index }];
+    return [
+      ...others,
+      { ...from, slot_index: slotIndex },
+      { ...to, slot_index: from.slot_index },
+    ];
   }
   if (from) {
     return [...others, { ...from, slot_index: slotIndex }];
@@ -75,20 +111,19 @@ function optimisticAssign(slots: GardenSlot[], plantId: string, slotIndex: numbe
 
 export default function GridScreen() {
   const theme = useTheme();
-  const insets = useSafeAreaInsets();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const compact = windowWidth < 500 || windowHeight < 760;
-  const framePad = compact ? 7 : GARDEN_FRAME_PAD;
-  const bedPad = compact ? 6 : GARDEN_BED_PAD;
+  const framePad = 0;
+  const bedPad = 0;
   const bed = {
-    woodOuter: theme.woodOuter,
-    wood: theme.wood,
-    woodEdge: theme.woodEdge,
-    soil: theme.soil,
-    plot: theme.plot,
-    plotLine: theme.plotLine,
-    plotHover: theme.plotHover,
-    label: theme.plotLabel,
+    woodOuter: GardenPalette.woodOuter,
+    wood: GardenPalette.highlight,
+    woodEdge: GardenPalette.woodEdge,
+    soil: GardenPalette.soil,
+    plot: GardenPalette.plot,
+    plotLine: GardenPalette.plotLine,
+    plotHover: GardenPalette.plotHover,
+    label: GardenPalette.plotLabel,
   };
   const { user } = useAuth();
   const [plants, setPlants] = useState<InventoryPlant[]>([]);
@@ -99,8 +134,11 @@ export default function GridScreen() {
   const [selectedPlantId, setSelectedPlantId] = useState<string | null>(null);
   const [hoverSlot, setHoverSlot] = useState<number | null>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
-  const [boardArea, setBoardArea] = useState({ width: 0, height: 0 });
-  const [headerHeight, setHeaderHeight] = useState(compact ? 64 : 84);
+  const [boardAreaWidth, setBoardAreaWidth] = useState(0);
+  const [contentHeight, setContentHeight] = useState(0);
+  const [headerHeight, setHeaderHeight] = useState(0);
+  const [errorHeight, setErrorHeight] = useState(0);
+  const [trayOpen, setTrayOpen] = useState(false);
 
   const slotFrames = useRef<Partial<Record<number, Frame>>>({});
   const slotViews = useRef<Partial<Record<number, View | null>>>({});
@@ -131,46 +169,78 @@ export default function GridScreen() {
     }
   }
 
-  const plantsById = useMemo(() => new Map(plants.map((plant) => [plant.id, plant])), [plants]);
-  const slotMap = useMemo(() => new Map(slots.map((slot) => [slot.slot_index, slot])), [slots]);
+  const plantsById = useMemo(
+    () => new Map(plants.map((plant) => [plant.id, plant])),
+    [plants],
+  );
+  const slotMap = useMemo(
+    () => new Map(slots.map((slot) => [slot.slot_index, slot])),
+    [slots],
+  );
+
+  const trayTarget = trayOpen
+    ? compact
+      ? TRAY_OPEN_HEIGHT_COMPACT
+      : TRAY_OPEN_HEIGHT
+    : TRAY_COLLAPSED_HEIGHT;
+  const trayHeight = useTweenedNumber(trayTarget);
+  const trayExpanded = trayOpen || trayHeight > TRAY_COLLAPSED_HEIGHT + 1;
+
+  // The board's height is whatever the tray leaves over, computed from
+  // stable measurements so it follows the tray tween frame by frame.
+  const contentGap = compact ? Spacing.one : Spacing.two;
+  const contentPaddingTop = compact ? Spacing.two : Spacing.three;
+  const boardAreaHeight =
+    contentHeight > 0
+      ? Math.max(
+          0,
+          contentHeight -
+            contentPaddingTop -
+            Spacing.two -
+            headerHeight -
+            trayHeight -
+            contentGap * (error ? 3 : 2) -
+            (error ? errorHeight : 0),
+        )
+      : windowHeight / 2;
 
   const boardSize = useMemo(() => {
+    // frameOuter, frameInner and soilBed borders (1 each) per side
     const chrome = (framePad + bedPad + 3) * 2;
-    const areaWidth = boardArea.width || windowWidth - (compact ? 32 : 48);
+    const areaWidth = boardAreaWidth || windowWidth - (compact ? 32 : 48);
     const innerWidth = Math.max(0, areaWidth - chrome);
-    const tabBar = 52 + insets.bottom;
-    const trayFloor = compact ? 124 : 168;
-    const chromeVertical =
-      insets.top + CURRENCY_BAR_BODY + tabBar + headerHeight + (compact ? 16 : 28) + trayFloor;
-    const maxFrameHeight = Math.max(168, windowHeight - chromeVertical);
-    const maxInnerHeight = Math.max(GARDEN_MIN_CELL * GARDEN_ROWS, maxFrameHeight - chrome);
+    const maxInnerHeight = Math.max(
+      GARDEN_MIN_CELL * GARDEN_ROWS,
+      boardAreaHeight - chrome,
+    );
 
     return gardenBoardSize(innerWidth, maxInnerHeight);
-  }, [
-    bedPad,
-    boardArea.width,
-    compact,
-    framePad,
-    headerHeight,
-    insets.bottom,
-    insets.top,
-    windowHeight,
-    windowWidth,
-  ]);
+  }, [bedPad, boardAreaHeight, boardAreaWidth, compact, framePad, windowWidth]);
 
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [nextPlants, nextSlots] = await Promise.all([listUserPlants(), listGardenSlots()]);
+      const [nextPlants, nextSlots] = await Promise.all([
+        listUserPlants(),
+        listGardenSlots(),
+      ]);
       setPlants(nextPlants);
       setSlots(nextSlots);
       try {
         setWateredIds(await listWateredPlantIds());
       } catch (waterError) {
-        setError(waterError instanceof Error ? waterError.message : 'Could not load watering logs');
+        setError(
+          waterError instanceof Error
+            ? waterError.message
+            : "Could not load watering logs",
+        );
       }
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Could not load your garden');
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Could not load your garden",
+      );
     } finally {
       setLoading(false);
     }
@@ -179,7 +249,7 @@ export default function GridScreen() {
   useFocusEffect(
     useCallback(() => {
       void load();
-    }, [load])
+    }, [load]),
   );
 
   async function placePlant(plantId: string, slotIndex: number) {
@@ -196,19 +266,29 @@ export default function GridScreen() {
       setSlots(await listGardenSlots());
     } catch (placeError) {
       setSlots(previous);
-      setError(placeError instanceof Error ? placeError.message : 'Could not place that plant');
+      setError(
+        placeError instanceof Error
+          ? placeError.message
+          : "Could not place that plant",
+      );
     }
   }
 
   async function removeFromSlot(slotIndex: number) {
     const previous = slotsRef.current;
-    setSlots((current) => current.filter((slot) => slot.slot_index !== slotIndex));
+    setSlots((current) =>
+      current.filter((slot) => slot.slot_index !== slotIndex),
+    );
     setSelectedPlantId(null);
     try {
       await clearGardenSlot(slotIndex);
     } catch (removeError) {
       setSlots(previous);
-      setError(removeError instanceof Error ? removeError.message : 'Could not clear that slot');
+      setError(
+        removeError instanceof Error
+          ? removeError.message
+          : "Could not clear that slot",
+      );
     }
   }
 
@@ -277,7 +357,8 @@ export default function GridScreen() {
   const placedCount = slots.length;
 
   return (
-    <ThemedView style={styles.screen}>
+    <ThemedView style={styles.root}>
+      <GrassBackground />
       <View
         ref={screenRef}
         style={styles.screen}
@@ -287,101 +368,156 @@ export default function GridScreen() {
               screenOrigin.current = { x: frame.x, y: frame.y };
             });
           }
-        }}>
+        }}
+      >
         <View
+          onLayout={(event) =>
+            setContentHeight(event.nativeEvent.layout.height)
+          }
           style={[
             styles.content,
             {
-              paddingTop: compact ? Spacing.two : Spacing.three,
+              paddingTop: contentPaddingTop,
               paddingHorizontal: compact ? Spacing.three : Spacing.four,
-              gap: compact ? Spacing.one : Spacing.two,
+              gap: contentGap,
             },
-          ]}>
+          ]}
+        >
           <View
             style={styles.header}
-            onLayout={(event) => setHeaderHeight(event.nativeEvent.layout.height)}>
-            <ThemedText type="heading">Grid</ThemedText>
+            onLayout={(event) =>
+              setHeaderHeight(event.nativeEvent.layout.height)
+            }
+          >
+            <ThemedText
+              type="heading"
+              style={{ color: GardenPalette.panelText }}
+            >
+              Your Grid
+            </ThemedText>
             {compact ? (
-              <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
-                {loading ? 'Loading…' : `${placedCount}/${GARDEN_SLOT_COUNT} · drag onto a plot`}
-              </ThemedText>
+              <>
+                <ThemedText
+                  type="small"
+                  style={{ color: GardenPalette.panelTextSecondary }}
+                  numberOfLines={1}
+                >
+                  {loading
+                    ? "Loading…"
+                    : `${placedCount}/${GARDEN_SLOT_COUNT} · drag onto a plot`}
+                </ThemedText>
+              </>
             ) : (
-              <ThemedText themeColor="textSecondary">
+              <ThemedText style={{ color: GardenPalette.panelTextSecondary }}>
                 {loading
-                  ? 'Loading garden…'
+                  ? "Loading garden…"
                   : `${placedCount} of ${GARDEN_SLOT_COUNT} slots filled. Drag a plant onto a plot.`}
               </ThemedText>
             )}
           </View>
 
           {error ? (
-            <ThemedText type="small" style={{ color: theme.danger }}>
+            <ThemedText
+              type="small"
+              style={[styles.errorText, { color: GardenPalette.panelDanger }]}
+              onLayout={(event) =>
+                setErrorHeight(event.nativeEvent.layout.height)
+              }
+            >
               {error}
             </ThemedText>
           ) : null}
 
           <View
-            style={styles.boardArea}
-            onLayout={(event) => {
-              const { width } = event.nativeEvent.layout;
-              setBoardArea({ width, height: event.nativeEvent.layout.height });
-            }}>
-            <View
-              style={[
-                styles.frameOuter,
-                {
-                  backgroundColor: bed.woodOuter,
-                  borderColor: bed.woodEdge,
-                },
-              ]}>
+            style={[styles.boardArea, { height: boardAreaHeight }]}
+            onLayout={(event) =>
+              setBoardAreaWidth(event.nativeEvent.layout.width)
+            }
+          >
+            <View pointerEvents="box-none" style={styles.boardCenter}>
               <View
                 style={[
-                  styles.frameInner,
-                  { backgroundColor: bed.soil, borderColor: bed.woodEdge, padding: framePad },
-                ]}>
+                  styles.frameOuter,
+                  {
+                    backgroundColor: bed.woodOuter,
+                    borderColor: bed.woodEdge,
+                  },
+                ]}
+              >
                 <View
                   style={[
-                    styles.soilBed,
-                    { backgroundColor: bed.soil, borderColor: bed.plotLine, padding: bedPad },
-                  ]}>
-                  <View style={[styles.board, { width: boardSize.width, height: boardSize.height }]}>
-                    {Array.from({ length: GARDEN_ROWS }, (_, row) => (
-                      <View key={row} style={styles.row}>
-                        {Array.from({ length: GARDEN_COLUMNS }, (_, column) => {
-                          const index = row * GARDEN_COLUMNS + column;
-                          const occupant = slotMap.get(index);
-                          const plant = occupant ? plantsById.get(occupant.plant_id) : undefined;
-                          const highlighted = hoverSlot === index;
+                    styles.frameInner,
+                    {
+                      backgroundColor: bed.soil,
+                      borderColor: bed.woodEdge,
+                      padding: framePad,
+                    },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.soilBed,
+                      {
+                        backgroundColor: bed.soil,
+                        borderColor: bed.plotLine,
+                        padding: bedPad,
+                      },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.board,
+                        { width: boardSize.width, height: boardSize.height },
+                      ]}
+                    >
+                      {Array.from({ length: GARDEN_ROWS }, (_, row) => (
+                        <View key={row} style={styles.row}>
+                          {Array.from(
+                            { length: GARDEN_COLUMNS },
+                            (_, column) => {
+                              const index = row * GARDEN_COLUMNS + column;
+                              const occupant = slotMap.get(index);
+                              const plant = occupant
+                                ? plantsById.get(occupant.plant_id)
+                                : undefined;
+                              const highlighted = hoverSlot === index;
 
-                          return (
-                            <GardenSlotCell
-                              key={index}
-                              index={index}
-                              plant={plant}
-                              needsWater={plant != null && !wateredIds.has(plant.id)}
-                              bed={bed}
-                              selected={selectedPlantId != null && occupant?.plant_id === selectedPlantId}
-                              highlighted={highlighted}
-                              onLayoutView={(view) => {
-                                slotViews.current[index] = view;
-                                measureView(view, (frame) => {
-                                  slotFrames.current[index] = frame;
-                                });
-                              }}
-                              onPress={() => handleSlotPress(index)}
-                              onLongPress={() => {
-                                if (occupant) {
-                                  void removeFromSlot(index);
-                                }
-                              }}
-                              onDragStart={startDrag}
-                              onDragMove={moveDrag}
-                              onDragEnd={endDrag}
-                            />
-                          );
-                        })}
-                      </View>
-                    ))}
+                              return (
+                                <GardenSlotCell
+                                  key={index}
+                                  index={index}
+                                  plant={plant}
+                                  needsWater={
+                                    plant != null && !wateredIds.has(plant.id)
+                                  }
+                                  bed={bed}
+                                  selected={
+                                    selectedPlantId != null &&
+                                    occupant?.plant_id === selectedPlantId
+                                  }
+                                  highlighted={highlighted}
+                                  onLayoutView={(view) => {
+                                    slotViews.current[index] = view;
+                                    measureView(view, (frame) => {
+                                      slotFrames.current[index] = frame;
+                                    });
+                                  }}
+                                  onPress={() => handleSlotPress(index)}
+                                  onLongPress={() => {
+                                    if (occupant) {
+                                      void removeFromSlot(index);
+                                    }
+                                  }}
+                                  onDragStart={startDrag}
+                                  onDragMove={moveDrag}
+                                  onDragEnd={endDrag}
+                                />
+                              );
+                            },
+                          )}
+                        </View>
+                      ))}
+                    </View>
                   </View>
                 </View>
               </View>
@@ -390,51 +526,90 @@ export default function GridScreen() {
 
           <GardenFrame
             variant="bed"
-            fill
-            style={styles.tray}
+            style={{
+              height: trayHeight,
+              backgroundColor: GardenPalette.panel,
+              borderColor: GardenPalette.panelBorder,
+            }}
             contentStyle={styles.trayInner}
-            padded={false}>
+            padded={false}
+          >
             <View
               ref={trayRef}
-              style={styles.trayContent}
+              style={trayExpanded ? styles.trayContent : styles.trayCollapsed}
               onLayout={() => {
                 if (trayRef.current) {
                   measureView(trayRef.current, (frame) => {
                     trayFrame.current = frame;
                   });
                 }
-              }}>
-              <ThemedText type="smallBold">Your plants</ThemedText>
-              <ThemedText type="small" themeColor="textSecondary">
-                {plants.length === 0
-                  ? 'Add plants from the Add tab, then drag them up into the grid.'
-                  : 'Drag a plant up onto a plot. Drag one off the grid to remove it.'}
-              </ThemedText>
-              <ScrollView
-                horizontal
-                scrollEnabled={!drag}
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.trayList}>
-                {plants.map((plant) => {
-                  const placedIndex = slotIndexForPlant(slots, plant.id);
-                  return (
-                    <InventoryItem
-                      key={plant.id}
-                      plant={plant}
-                      needsWater={!wateredIds.has(plant.id)}
-                      placed={placedIndex != null}
-                      selected={selectedPlantId === plant.id}
-                      dragging={drag?.plantId === plant.id}
-                      onPress={() =>
-                        setSelectedPlantId((current) => (current === plant.id ? null : plant.id))
-                      }
-                      onDragStart={startDrag}
-                      onDragMove={moveDrag}
-                      onDragEnd={endDrag}
-                    />
-                  );
-                })}
-              </ScrollView>
+              }}
+            >
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ expanded: trayOpen }}
+                accessibilityLabel={
+                  trayOpen ? "Hide your plants" : "Show your plants"
+                }
+                onPress={() => setTrayOpen((open) => !open)}
+                style={({ pressed }) => [
+                  styles.trayToggle,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <ThemedText
+                  type="smallBold"
+                  style={{ color: GardenPalette.panelText }}
+                >
+                  Your plants{plants.length > 0 ? ` (${plants.length})` : ""}
+                </ThemedText>
+                <ThemedText
+                  type="smallBold"
+                  style={{ color: GardenPalette.panelText }}
+                >
+                  {trayOpen ? "▼" : "▲"}
+                </ThemedText>
+              </Pressable>
+              {trayExpanded ? (
+                <ThemedText
+                  type="small"
+                  style={{ color: GardenPalette.panelTextSecondary }}
+                >
+                  {plants.length === 0
+                    ? "Add plants from the Add tab, then drag them up into the grid."
+                    : "Drag a plant up onto a plot. Drag one off the grid to remove it."}
+                </ThemedText>
+              ) : null}
+              {trayExpanded ? (
+                <ScrollView
+                  horizontal
+                  scrollEnabled={!drag}
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.trayList}
+                >
+                  {plants.map((plant) => {
+                    const placedIndex = slotIndexForPlant(slots, plant.id);
+                    return (
+                      <InventoryItem
+                        key={plant.id}
+                        plant={plant}
+                        needsWater={!wateredIds.has(plant.id)}
+                        placed={placedIndex != null}
+                        selected={selectedPlantId === plant.id}
+                        dragging={drag?.plantId === plant.id}
+                        onPress={() =>
+                          setSelectedPlantId((current) =>
+                            current === plant.id ? null : plant.id,
+                          )
+                        }
+                        onDragStart={startDrag}
+                        onDragMove={moveDrag}
+                        onDragEnd={endDrag}
+                      />
+                    );
+                  })}
+                </ScrollView>
+              ) : null}
             </View>
           </GardenFrame>
         </View>
@@ -448,8 +623,13 @@ export default function GridScreen() {
                 left: drag.x - screenOrigin.current.x - 52,
                 top: drag.y - screenOrigin.current.y - 64,
               },
-            ]}>
-            <PlantToken plant={draggingPlant} compact needsWater={!wateredIds.has(draggingPlant.id)} />
+            ]}
+          >
+            <PlantToken
+              plant={draggingPlant}
+              compact
+              needsWater={!wateredIds.has(draggingPlant.id)}
+            />
           </View>
         ) : null}
       </View>
@@ -504,7 +684,9 @@ const GardenSlotCell = memo(function GardenSlotCell({
     return Gesture.Pan()
       .minDistance(6)
       .runOnJS(true)
-      .onStart((event) => onDragStart(plantId, event.absoluteX, event.absoluteY))
+      .onStart((event) =>
+        onDragStart(plantId, event.absoluteX, event.absoluteY),
+      )
       .onUpdate((event) => onDragMove(event.absoluteX, event.absoluteY))
       .onEnd((event) => onDragEnd(event.absoluteX, event.absoluteY, plantId));
   }, [plantId, onDragStart, onDragMove, onDragEnd]);
@@ -513,7 +695,9 @@ const GardenSlotCell = memo(function GardenSlotCell({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={
-        plant ? `${plantDisplayName(plant.info)}, slot ${index}` : `Empty slot ${index}`
+        plant
+          ? `${plantDisplayName(plant.info)}, slot ${index}`
+          : `Empty slot ${index}`
       }
       onPress={onPress}
       onLongPress={onLongPress}
@@ -527,13 +711,31 @@ const GardenSlotCell = memo(function GardenSlotCell({
         },
         (selected || highlighted) && { borderWidth: 2 },
         pressed && styles.pressed,
-      ]}>
+      ]}
+    >
       {plant ? (
         <PlantToken plant={plant} selected={selected} needsWater={needsWater} />
       ) : (
-        <ThemedText type="small" style={[styles.slotIndex, { color: bed.label }]}>
-          {index}
-        </ThemedText>
+        <>
+          <Image
+            source={require("@/assets/images/soil_tile.png")}
+            style={styles.slotSoil}
+            contentFit="cover"
+            pointerEvents="none"
+          />
+          {highlighted ? (
+            <View
+              pointerEvents="none"
+              style={[styles.slotSoil, styles.slotHover]}
+            />
+          ) : null}
+          <ThemedText
+            type="small"
+            style={[styles.slotIndex, { color: bed.label }]}
+          >
+            {index}
+          </ThemedText>
+        </>
       )}
     </Pressable>
   );
@@ -546,7 +748,8 @@ const GardenSlotCell = memo(function GardenSlotCell({
         if (cellRef.current) {
           onLayoutView(cellRef.current);
         }
-      }}>
+      }}
+    >
       {gesture ? (
         <View style={styles.fill}>
           <GestureDetector gesture={gesture}>{body}</GestureDetector>
@@ -586,10 +789,14 @@ const InventoryItem = memo(function InventoryItem({
         .activeOffsetY([-4, 4])
         .failOffsetX([-48, 48])
         .runOnJS(true)
-        .onStart((event) => onDragStart(plant.id, event.absoluteX, event.absoluteY))
+        .onStart((event) =>
+          onDragStart(plant.id, event.absoluteX, event.absoluteY),
+        )
         .onUpdate((event) => onDragMove(event.absoluteX, event.absoluteY))
-        .onEnd((event) => onDragEnd(event.absoluteX, event.absoluteY, plant.id)),
-    [plant.id, onDragStart, onDragMove, onDragEnd]
+        .onEnd((event) =>
+          onDragEnd(event.absoluteX, event.absoluteY, plant.id),
+        ),
+    [plant.id, onDragStart, onDragMove, onDragEnd],
   );
 
   return (
@@ -598,48 +805,86 @@ const InventoryItem = memo(function InventoryItem({
         accessibilityRole="button"
         accessibilityLabel={plantDisplayName(plant.info)}
         onPress={onPress}
-        style={({ pressed }) => [pressed && styles.pressed, dragging && styles.draggingSource]}>
-        <PlantToken plant={plant} compact placed={placed} selected={selected} needsWater={needsWater} />
+        style={({ pressed }) => [
+          pressed && styles.pressed,
+          dragging && styles.draggingSource,
+        ]}
+      >
+        <PlantToken
+          plant={plant}
+          compact
+          placed={placed}
+          selected={selected}
+          needsWater={needsWater}
+        />
       </Pressable>
     </GestureDetector>
   );
 });
 
 const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+  },
   screen: {
     flex: 1,
-    alignItems: 'center',
+    width: "100%",
+    alignItems: "center",
   },
   content: {
     flex: 1,
-    width: '100%',
-    maxWidth: MaxContentWidth,
+    flexDirection: "column",
+    width: "100%",
+    maxWidth: "100%",
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.four,
+    paddingBottom: Spacing.two,
     gap: Spacing.two,
   },
   header: {
+    alignSelf: "flex-start",
     gap: Spacing.half,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.one,
+    borderRadius: Radius.sm,
+    backgroundColor: GardenPalette.panel,
+    borderWidth: 1,
+    borderColor: GardenPalette.panelBorder,
   },
   boardArea: {
-    width: '100%',
-    alignSelf: 'stretch',
+    alignSelf: "stretch",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  errorText: {
+    alignSelf: "flex-start",
+    paddingHorizontal: Spacing.two,
     paddingVertical: Spacing.one,
+    borderRadius: Radius.sm,
+    backgroundColor: GardenPalette.panel,
+    overflow: "hidden",
+  },
+  boardCenter: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    alignItems: "center",
+    justifyContent: "center",
   },
   frameOuter: {
-    width: '100%',
-    padding: 3,
+    alignSelf: "center",
+    padding: 0,
     borderWidth: 1,
     borderRadius: 12,
   },
   frameInner: {
-    width: '100%',
     borderWidth: 1,
     borderRadius: 9,
   },
   soilBed: {
-    width: '100%',
-    alignItems: 'center',
+    alignItems: "center",
     borderWidth: 1,
     borderRadius: 7,
   },
@@ -648,7 +893,7 @@ const styles = StyleSheet.create({
   },
   row: {
     flex: 1,
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: GARDEN_SLOT_GAP,
   },
   slotWrap: {
@@ -657,24 +902,42 @@ const styles = StyleSheet.create({
   },
   slot: {
     flex: 1,
-    width: '100%',
-    height: '100%',
+    width: "100%",
+    height: "100%",
     borderWidth: 1,
     borderRadius: Radius.sm,
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
   },
   slotFilled: {
-    alignItems: 'stretch',
-    justifyContent: 'flex-start',
+    alignItems: "stretch",
+    justifyContent: "flex-start",
+  },
+  slotSoil: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+  },
+  slotHover: {
+    backgroundColor: GardenPalette.plotHover,
+    opacity: 0.55,
   },
   slotIndex: {
-    fontVariant: ['tabular-nums'],
+    fontVariant: ["tabular-nums"],
   },
-  tray: {
+  trayCollapsed: {
     flex: 1,
-    minHeight: 120,
+    paddingHorizontal: Spacing.three,
+    justifyContent: "center",
+  },
+  trayToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    minHeight: 36,
   },
   trayInner: {
     flex: 1,
@@ -693,13 +956,13 @@ const styles = StyleSheet.create({
     opacity: 0.35,
   },
   dragGhost: {
-    position: 'absolute',
+    position: "absolute",
     zIndex: 20,
   },
   fill: {
     flex: 1,
-    width: '100%',
-    height: '100%',
+    width: "100%",
+    height: "100%",
   },
   pressed: {
     opacity: 0.75,
