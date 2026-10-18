@@ -13,6 +13,7 @@ type PlantTokenProps = {
   placed?: boolean;
   selected?: boolean;
   needsWater?: boolean;
+  labelVisible?: boolean;
 };
 
 export function PlantToken({
@@ -21,6 +22,7 @@ export function PlantToken({
   placed = false,
   selected = false,
   needsWater = false,
+  labelVisible = true,
 }: PlantTokenProps) {
   const theme = useTheme();
   const name = plantDisplayName(plant.info);
@@ -50,11 +52,13 @@ export function PlantToken({
     return (
       <View style={styles.slotToken}>
         {image}
-        <View style={styles.slotCaption}>
-          <ThemedText type="smallBold" numberOfLines={1} style={styles.slotName}>
-            {name}
-          </ThemedText>
-        </View>
+        {labelVisible ? (
+          <View style={styles.slotCaption}>
+            <ThemedText type="smallBold" numberOfLines={1} style={styles.slotName}>
+              {name}
+            </ThemedText>
+          </View>
+        ) : null}
         {needsWater ? <NeedsWaterBubble compact /> : null}
       </View>
     );
@@ -71,18 +75,21 @@ export function PlantToken({
         },
         selected && { borderWidth: 2 },
         placed && { opacity: 0.72 },
+        !labelVisible && styles.compactImageOnly,
       ]}>
       {image}
-      <View style={[styles.caption, styles.compactCaption]}>
-        <ThemedText type="smallBold" numberOfLines={2}>
-          {name}
-        </ThemedText>
-        {placed ? (
-          <ThemedText type="small" themeColor="textSecondary">
-            In grid
+      {labelVisible ? (
+        <View style={[styles.caption, styles.compactCaption]}>
+          <ThemedText type="smallBold" numberOfLines={2}>
+            {name}
           </ThemedText>
-        ) : null}
-      </View>
+          {placed ? (
+            <ThemedText type="small" themeColor="textSecondary">
+              In grid
+            </ThemedText>
+          ) : null}
+        </View>
+      ) : null}
       {needsWater ? <NeedsWaterBubble compact /> : null}
     </View>
   );
@@ -103,6 +110,9 @@ const styles = StyleSheet.create({
   compact: {
     width: 104,
     height: 128,
+  },
+  compactImageOnly: {
+    height: 72,
   },
   slotImage: {
     position: 'absolute',

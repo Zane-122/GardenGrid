@@ -516,6 +516,21 @@ export async function listUserPlants() {
   })) satisfies InventoryPlant[];
 }
 
+const currencyListeners = new Set<() => void>();
+
+export function onCurrencyChanged(listener: () => void) {
+  currencyListeners.add(listener);
+  return () => {
+    currencyListeners.delete(listener);
+  };
+}
+
+export function notifyCurrencyChanged() {
+  for (const listener of currencyListeners) {
+    listener();
+  }
+}
+
 export async function getCurrencyBalances() {
   const {
     data: { user },

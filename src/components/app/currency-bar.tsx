@@ -1,6 +1,6 @@
 import { useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Animated, { interpolateColor, useAnimatedStyle } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,7 +10,7 @@ import { GardenPalette, Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/auth';
 import { gardenMix, useGardenHalfway, useGardenMixDriver } from '@/hooks/use-garden-mix';
 import { useTheme } from '@/hooks/use-theme';
-import { getCurrencyBalances } from '@/utils/plants';
+import { getCurrencyBalances, onCurrencyChanged } from '@/utils/plants';
 
 export const CURRENCY_BAR_BODY = 48;
 
@@ -57,6 +57,8 @@ export function CurrencyBar() {
       void load();
     }, [load])
   );
+
+  useEffect(() => onCurrencyChanged(() => void load()), [load]);
 
   const pollenAmount = balances == null ? '…' : `${formatAmount(balances.pollen)} mg`;
   const oxygenAmount = balances == null ? '…' : `${formatAmount(balances.oxygen)} mL`;
