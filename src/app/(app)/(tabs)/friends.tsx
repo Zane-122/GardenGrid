@@ -280,7 +280,6 @@ function Section({
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    alignItems: 'center',
   },
   content: {
     width: '100%',

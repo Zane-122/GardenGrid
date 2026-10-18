@@ -51,6 +51,36 @@ const flat = {
   pollen: '#ffd500',
 } as const;
 
+/** Earthy green-and-brown palette used only by the grid page. */
+export const GardenPalette = {
+  // Lawn behind the bed
+  grass: '#4C7F33',
+
+  // Raised bed
+  woodOuter: '#8A5A33',
+  woodEdge: '#4E331C',
+  soil: '#5A381D',
+  plot: '#6F4727',
+  plotLine: '#3F2815',
+  plotHover: '#86A03F',
+  plotLabel: '#BFA27E',
+  highlight: '#F2C94C',
+
+  // Parchment panels sitting on the grass
+  panel: '#F4EAD2',
+  panelBorder: '#C4AA7C',
+  panelText: '#3B2A1A',
+  panelTextSecondary: '#6E5A44',
+  panelDanger: '#A8402F',
+
+  // Top bar and tab bar while on the grid page
+  bar: '#4E331C',
+  barBorder: '#33200F',
+  barText: '#F4EAD2',
+  barTextMuted: '#CDB48C',
+  barPill: '#6F4727',
+} as const;
+
 export const Colors = {
   light: flat,
   dark: flat,

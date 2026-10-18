@@ -1,11 +1,10 @@
 import { supabase } from '@/utils/supabase';
 
-export const GARDEN_COLUMNS = 4;
-export const GARDEN_ROWS = 3;
+export const GARDEN_COLUMNS = 3;
+export const GARDEN_ROWS = 4;
 export const GARDEN_SLOT_COUNT = GARDEN_COLUMNS * GARDEN_ROWS;
 export const GARDEN_SLOT_GAP = 6;
 export const GARDEN_MIN_CELL = 44;
-export const GARDEN_MAX_CELL = 112;
 export const GARDEN_FRAME_PAD = 10;
 export const GARDEN_BED_PAD = 8;
 
@@ -14,7 +13,8 @@ export function gardenBoardSize(innerWidth: number, maxInnerHeight: number) {
   const gapY = GARDEN_SLOT_GAP * (GARDEN_ROWS - 1);
   const fromWidth = (innerWidth - gapX) / GARDEN_COLUMNS;
   const fromHeight = (maxInnerHeight - gapY) / GARDEN_ROWS;
-  const cell = Math.max(GARDEN_MIN_CELL, Math.min(GARDEN_MAX_CELL, fromWidth, fromHeight));
+  // Cells are always square: as large as both the width and height allow.
+  const cell = Math.max(GARDEN_MIN_CELL, Math.min(fromWidth, fromHeight));
 
   return {
     cell,
