@@ -166,15 +166,34 @@ Deno.serve(async (req: Request) => {
 
     const { bytes, contentType } = await decodePlantImage(photo);
     const imageBase64 = encodeBase64(bytes);
+    const previousFlower: FlowerPollenConstants | null =
+      plant.flower_ratio != null && plant.pollen_per_flower_mg != null
+        ? { flower_ratio: plant.flower_ratio, pollen_per_flower_mg: plant.pollen_per_flower_mg }
+        : null;
+    const flowerPromise = generateFlowerPollenParams(
+      imageBase64,
+      contentType,
+      basicInfo.scientific_name,
+      basicInfo.common_names?.[0] ?? null,
+      previousFlower
+    );
 
     const health = await analyzePlantHealth(imageBase64, contentType, basicInfo.scientific_name);
 
     const photoResult = await uploadPlantPhoto(admin, plant.id, photo);
 
     if (!health) {
+      const flowerParams = await flowerPromise;
+      const plantUpdate: Record<string, unknown> = { photo_path: photoResult.path };
+      if (flowerParams) {
+        plantUpdate.flower_ratio = flowerParams.flower_ratio;
+        plantUpdate.pollen_per_flower_mg = flowerParams.pollen_per_flower_mg;
+      } else {
+        console.error(`update-plant-photo: no flower pollen constants for plant ${plant.id}`);
+      }
       const { data: updatedPlant, error: updateError } = await admin
         .from('plants')
-        .update({ photo_path: photoResult.path })
+        .update(plantUpdate)
         .eq('id', plant.id)
         .select('*, plant_basic_info(*)')
         .single();
@@ -238,17 +257,6 @@ Deno.serve(async (req: Request) => {
     }
 
     const plantAgeInDays = daysBetween(plant.created_at, now);
-    const previousFlower: FlowerPollenConstants | null =
-      plant.flower_ratio != null && plant.pollen_per_flower_mg != null
-        ? { flower_ratio: plant.flower_ratio, pollen_per_flower_mg: plant.pollen_per_flower_mg }
-        : null;
-    const flowerPromise = generateFlowerPollenParams(
-      imageBase64,
-      contentType,
-      basicInfo.scientific_name,
-      basicInfo.common_names?.[0] ?? null,
-      previousFlower
-    );
 
     const photoGrowthParams = await generateGrowthParamsFromPhoto(
       imageBase64,
@@ -286,6 +294,9 @@ Deno.serve(async (req: Request) => {
     const resolvedXPosition = growthParams ? solveXForFullness(growthParams, health.fullness_pct) : null;
 
     const flowerParams = await flowerPromise;
+    if (!flowerParams) {
+      console.error(`update-plant-photo: no flower pollen constants for plant ${plant.id}`);
+    }
 
     const plantUpdate: Record<string, unknown> = { photo_path: photoResult.path };
     if (resolvedXPosition != null) {

@@ -6,7 +6,14 @@ import { NeedsWaterBubble } from '@/components/inventory/needs-water-bubble';
 import { ThemedText } from '@/components/themed-text';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { plantDisplayName, plantImageUrl, wateringLabel, type InventoryPlant } from '@/utils/plants';
+import {
+  formatOxygenMl,
+  formatPollenMg,
+  plantDisplayName,
+  plantImageUrl,
+  wateringLabel,
+  type InventoryPlant,
+} from '@/utils/plants';
 
 type PlantCardProps = {
   plant: InventoryPlant;
@@ -55,6 +62,12 @@ export function PlantCard({
             {scientificName}
           </ThemedText>
         ) : null}
+        <ThemedText type="small" themeColor="textSecondary">
+          Oxygen: {formatOxygenMl(plant.oxygen_ml)}
+        </ThemedText>
+        <ThemedText type="small" themeColor="textSecondary">
+          Pollen: {formatPollenMg(plant.pollen_mg)}
+        </ThemedText>
         {watering ? (
           <ThemedText type="small" themeColor="textSecondary">
             Water: {watering}

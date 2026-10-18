@@ -15,3 +15,10 @@ verify_jwt = true
 # Called by pg_cron with the pollen accrual secret, not a user JWT.
 [functions.accrue-pollen]
 verify_jwt = false
+
+# Called by pg_cron with the oxygen accrual secret, not a user JWT.
+[functions.accrue-oxygen]
+verify_jwt = false
+
+[functions.save-garden-location]
+verify_jwt = true

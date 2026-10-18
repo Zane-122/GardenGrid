@@ -1,11 +1,5 @@
--- NOT applied yet. Lives in supabase/pending/ so `supabase db push` ignores it.
--- Before moving it into supabase/migrations/:
---   1. Deploy the accrue-oxygen edge function.
---   2. supabase secrets set ACCRUE_SECRET=<random value>
---   3. Store the SAME value in Vault under the name 'accrue_oxygen_secret'
---      (select vault.create_secret('<value>', 'accrue_oxygen_secret');) —
---      run that by hand; the secret is deliberately not in this file.
--- The 'project_url' Vault secret already exists from the analyze-photo trigger.
+-- Hourly oxygen accrual. The bearer secret is Vault secret 'accrue_oxygen_secret'
+-- and must match the accrue-oxygen function's ACCRUE_SECRET. It is not stored here.
 
 create extension if not exists pg_cron;
 create extension if not exists pg_net;
@@ -54,5 +48,18 @@ grant execute on function public.request_accrue_oxygen() to service_role;
 comment on function public.request_accrue_oxygen() is
   'Calls the accrue-oxygen edge function with the Vault-stored bearer secret. Scheduled hourly via pg_cron.';
 
--- Re-running replaces the job of the same name.
-select cron.schedule('accrue-oxygen-hourly', '0 * * * *', 'select public.request_accrue_oxygen();');
+do $$
+declare
+  existing bigint;
+begin
+  select jobid into existing from cron.job where jobname = 'accrue-oxygen-hourly';
+  if existing is not null then
+    perform cron.unschedule(existing);
+  end if;
+
+  perform cron.schedule(
+    'accrue-oxygen-hourly',
+    '0 * * * *',
+    'select public.request_accrue_oxygen()'
+  );
+end $$;

@@ -1,4 +1,7 @@
 import { lowercaseKeys } from './json-utils.ts';
+import { seasonalBloomMultiplierForDay } from '../../../src/utils/seasonal-bloom.ts';
+
+export { seasonalBloomMultiplier, seasonalBloomMultiplierForDay } from '../../../src/utils/seasonal-bloom.ts';
 
 // Flower ratio and pollen-per-flower are constants, not a growth curve.
 // A photo asks Gemini to correct the previous constants. The hourly accrual
@@ -147,5 +150,32 @@ export async function generateFlowerPollenParams(
   } catch (error) {
     console.error('generateFlowerPollenParams failed:', error);
     return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Inline tests: deno run supabase/functions/_shared/flower-pollen.ts
+// ---------------------------------------------------------------------------
+
+if (import.meta.main) {
+  let failed = 0;
+  const check = (name: string, actual: number, expected: number) => {
+    const pass = Math.abs(actual - expected) <= 1e-9;
+    if (!pass) failed += 1;
+    console.log(`[${pass ? 'PASS' : 'FAIL'}] ${name}: got ${actual}, expected ${expected}`);
+  };
+
+  check('peak day 135', seasonalBloomMultiplierForDay(135), 1);
+  check('season start day 60', seasonalBloomMultiplierForDay(60), 0);
+  check('season end day 335', seasonalBloomMultiplierForDay(335), 0);
+  check('winter day 1', seasonalBloomMultiplierForDay(1), 0);
+  check('winter day 59', seasonalBloomMultiplierForDay(59), 0);
+  check('after season day 336', seasonalBloomMultiplierForDay(336), 0);
+  check('spring midpoint', seasonalBloomMultiplierForDay(97.5), 0.5);
+  check('fall midpoint', seasonalBloomMultiplierForDay(235), 0.5);
+
+  if (failed > 0) {
+    console.error(`${failed} test(s) failed`);
+    Deno.exit(1);
   }
 }

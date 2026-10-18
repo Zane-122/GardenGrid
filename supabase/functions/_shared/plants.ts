@@ -103,6 +103,28 @@ export function parseCoordinates(body: { latitude?: unknown; longitude?: unknown
   return { latitude, longitude };
 }
 
+export async function rememberGardenLocation(
+  admin: SupabaseClient,
+  userId: string,
+  coordinates: Coordinates | null
+) {
+  if (!coordinates) {
+    return;
+  }
+
+  const { error } = await admin
+    .from('profiles')
+    .update({
+      garden_latitude: coordinates.latitude,
+      garden_longitude: coordinates.longitude,
+    })
+    .eq('id', userId);
+
+  if (error) {
+    console.error(`rememberGardenLocation: ${error.message}`);
+  }
+}
+
 export function plantIdKey() {
   const key = Deno.env.get('PLANTID_API_KEY');
   if (!key) {
