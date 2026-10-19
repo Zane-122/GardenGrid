@@ -104,7 +104,7 @@ export async function listShopItems() {
 export async function listOwnedShopItems() {
   const { data, error } = await supabase
     .from('user_shop_items')
-    .select('id, user_id, shop_item_id, garden_tile_id, rotation, item:shop_items(slug, name, image_path, footprint_cols, footprint_rows), tile:garden_tiles!user_shop_items_garden_tile_id_fkey(col, row)')
+    .select('id, user_id, shop_item_id, garden_tile_id, rotation, item:shop_items(slug, name, image_path, footprint_cols, footprint_rows), tile:garden_tiles!user_shop_items_garden_tile_id_fkey(col, row, garden:gardens(kind))')
     .order('created_at', { ascending: true });
 
   if (error) {
@@ -114,13 +114,15 @@ export async function listOwnedShopItems() {
   return (data ?? []).map((row) => {
     const item = Array.isArray(row.item) ? row.item[0] : row.item;
     const tile = Array.isArray(row.tile) ? row.tile[0] : row.tile;
+    const garden = Array.isArray(tile?.garden) ? tile.garden[0] : tile?.garden;
+    const onPersonalGarden = garden?.kind === 'personal';
     return {
       id: String(row.id),
       user_id: String(row.user_id),
       shop_item_id: String(row.shop_item_id),
       garden_tile_id: row.garden_tile_id ? String(row.garden_tile_id) : null,
-      col: tile?.col == null ? null : Number(tile.col),
-      row: tile?.row == null ? null : Number(tile.row),
+      col: onPersonalGarden && tile?.col != null ? Number(tile.col) : null,
+      row: onPersonalGarden && tile?.row != null ? Number(tile.row) : null,
       name: String(item?.name ?? 'Item'),
       slug: String(item?.slug ?? ''),
       image_path: String(item?.image_path ?? ''),

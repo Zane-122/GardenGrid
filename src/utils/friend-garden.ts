@@ -14,14 +14,16 @@ export async function listFriendGarden(userId: string) {
   const [tilesResult, slotsResult, plantsResult, itemsResult] = await Promise.all([
     supabase
       .from("garden_tiles")
-      .select("id, user_id, col, row")
+      .select("id, user_id, col, row, garden:gardens!inner(kind)")
       .eq("user_id", userId)
+      .eq("garden.kind", "personal")
       .order("row", { ascending: true })
       .order("col", { ascending: true }),
     supabase
       .from("garden_slots")
-      .select("id, user_id, plant_id, tile_id, created_at, tile:garden_tiles(col, row)")
-      .eq("user_id", userId),
+      .select("id, user_id, plant_id, tile_id, created_at, tile:garden_tiles!inner(col, row, garden:gardens!inner(kind))")
+      .eq("user_id", userId)
+      .eq("tile.garden.kind", "personal"),
     supabase
       .from("plants")
       .select(
@@ -31,7 +33,7 @@ export async function listFriendGarden(userId: string) {
     supabase
       .from("user_shop_items")
       .select(
-        "id, user_id, shop_item_id, garden_tile_id, rotation, item:shop_items(slug, name, image_path, footprint_cols, footprint_rows), tile:garden_tiles!user_shop_items_garden_tile_id_fkey(col, row)",
+        "id, user_id, shop_item_id, garden_tile_id, rotation, item:shop_items(slug, name, image_path, footprint_cols, footprint_rows), tile:garden_tiles!user_shop_items_garden_tile_id_fkey(col, row, garden:gardens(kind))",
       )
       .eq("user_id", userId),
   ]);
@@ -99,13 +101,15 @@ export async function listFriendGarden(userId: string) {
   const items = (itemsResult.data ?? []).map((row) => {
     const item = Array.isArray(row.item) ? row.item[0] : row.item;
     const tile = Array.isArray(row.tile) ? row.tile[0] : row.tile;
+    const garden = Array.isArray(tile?.garden) ? tile.garden[0] : tile?.garden;
+    const onPersonalGarden = garden?.kind === "personal";
     return {
       id: String(row.id),
       user_id: String(row.user_id),
       shop_item_id: String(row.shop_item_id),
       garden_tile_id: row.garden_tile_id ? String(row.garden_tile_id) : null,
-      col: tile?.col == null ? null : Number(tile.col),
-      row: tile?.row == null ? null : Number(tile.row),
+      col: onPersonalGarden && tile?.col != null ? Number(tile.col) : null,
+      row: onPersonalGarden && tile?.row != null ? Number(tile.row) : null,
       name: String(item?.name ?? "Item"),
       slug: String(item?.slug ?? ""),
       image_path: String(item?.image_path ?? ""),

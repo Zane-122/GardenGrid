@@ -1,4 +1,4 @@
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState, type ReactNode } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 
@@ -214,6 +214,7 @@ export default function CommunitiesScreen() {
               <ThemedText type="small" themeColor="textSecondary">
                 Owned by {community.owner.displayName}. {names(community.members)}
               </ThemedText>
+              <FriendlyButton label="Open garden" onPress={() => router.push(`/community-garden/${community.id}`)} />
               {confirmLeaveId === community.id ? (
                 <View style={styles.actions}>
                   <FriendlyButton label="Cancel" variant="ghost" disabled={busyId !== null} onPress={() => setConfirmLeaveId(null)} />
@@ -319,6 +320,7 @@ function OwnedCard({
       <ThemedText type="small" themeColor="textSecondary">
         {community.members.length === 1 ? 'Just you so far.' : names(community.members)}
       </ThemedText>
+      <FriendlyButton label="Open garden" onPress={() => router.push(`/community-garden/${community.id}`)} />
       {community.invites.length > 0 ? (
         <ThemedText type="small" themeColor="textSecondary">
           Waiting on {community.invites.map((invite) => invite.person.displayName).join(', ')}

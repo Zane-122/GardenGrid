@@ -28,6 +28,9 @@ export default function AppLayout() {
               <Stack.Screen name="plant/[id]">
                 <Stack.Header hidden />
               </Stack.Screen>
+              <Stack.Screen name="community-garden/[id]">
+                <Stack.Header hidden />
+              </Stack.Screen>
             </Stack>
           </View>
         </View>

@@ -167,8 +167,9 @@ export async function listGardenTiles() {
 async function selectGardenTiles(userId: string) {
   const { data, error } = await supabase
     .from('garden_tiles')
-    .select('id, user_id, col, row')
+    .select('id, user_id, col, row, garden:gardens!inner(kind)')
     .eq('user_id', userId)
+    .eq('garden.kind', 'personal')
     .order('row', { ascending: true })
     .order('col', { ascending: true });
 
@@ -188,8 +189,9 @@ export async function listGardenSlots() {
   const user = await requireUser();
   const { data, error } = await supabase
     .from('garden_slots')
-    .select('id, user_id, plant_id, tile_id, created_at, tile:garden_tiles(col, row)')
-    .eq('user_id', user.id);
+    .select('id, user_id, plant_id, tile_id, created_at, tile:garden_tiles!inner(col, row, garden:gardens!inner(kind))')
+    .eq('user_id', user.id)
+    .eq('tile.garden.kind', 'personal');
 
   if (error) {
     throw error;

@@ -212,6 +212,18 @@ async function accrueUser(admin: SupabaseClient, userId: string, now: Date): Pro
   if (applied !== true) {
     return { credited: false, ml: 0, conflicted: true };
   }
+
+  const communityPlants = plantOxygen.filter((plant) => plant.ml > 0);
+  if (communityPlants.length > 0) {
+    const { error: communityError } = await admin.rpc('credit_community_garden_oxygen', {
+      p_user_id: userId,
+      p_plant_oxygen: communityPlants.map((plant) => ({ plant_id: plant.plantId, ml: plant.ml })),
+    });
+    if (communityError) {
+      throw new Error(`credit_community_garden_oxygen failed: ${communityError.message}`);
+    }
+  }
+
   return { credited: amountMl > 0, ml: amountMl, conflicted: false };
 }
 
