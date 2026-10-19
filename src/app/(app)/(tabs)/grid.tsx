@@ -153,6 +153,9 @@ export default function GridScreen() {
   const [, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedPlantId, setSelectedPlantId] = useState<string | null>(null);
+  const [selectedShopItemId, setSelectedShopItemId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [aimKey, setAimKey] = useState<string | null>(null);
   const [hoverSlot, setHoverSlot] = useState<string | null>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
   const [boardAreaWidth, setBoardAreaWidth] = useState(0);
@@ -210,6 +213,7 @@ export default function GridScreen() {
   const screenRef = useRef<View>(null);
   const screenOrigin = useRef({ x: 0, y: 0 });
   const slotsRef = useRef(slots);
+  const placeQueue = useRef(Promise.resolve());
   slotsRef.current = slots;
 
   function remasureDropTargets() {
@@ -649,13 +653,14 @@ export default function GridScreen() {
 
   async function removeFromSlot(col: number, row: number) {
     const previous = slotsRef.current;
-    setSlots((current) =>
-      current.filter((slot) => !(slot.col === col && slot.row === row)),
-    );
+    const next = previous.filter((slot) => !(slot.col === col && slot.row === row));
+    slotsRef.current = next;
+    setSlots(next);
     setSelectedPlantId(null);
     try {
       await clearGardenSlot(col, row);
     } catch (removeError) {
+      slotsRef.current = previous;
       setSlots(previous);
       setError(
         removeError instanceof Error
@@ -666,7 +671,7 @@ export default function GridScreen() {
   }
 
   async function placeOwnedItem(ownedId: string, col: number, row: number) {
-    const previous = ownedItems;
+    const previous = itemsRef.current;
     const previousSlots = slotsRef.current;
     const moving = previous.find((item) => item.id === ownedId);
     const anchor = tiles.find((item) => item.col === col && item.row === row);
@@ -708,50 +713,54 @@ export default function GridScreen() {
       ((plantsOnTarget.length === 1 && others.length === 0) ||
         (plantsOnTarget.length === 0 && otherIsSingle));
 
-    setSlots((current) => {
-      if (canSwap && plantsOnTarget.length === 1) {
-        return current.map((slot) =>
-          slot.id === plantsOnTarget[0].id
-            ? {
-                ...slot,
-                tile_id: moving.garden_tile_id!,
-                col: moving.col!,
-                row: moving.row!,
-              }
-            : slot,
-        );
+    const nextSlots =
+      canSwap && plantsOnTarget.length === 1
+        ? previousSlots.map((slot) =>
+            slot.id === plantsOnTarget[0].id
+              ? {
+                  ...slot,
+                  tile_id: moving.garden_tile_id!,
+                  col: moving.col!,
+                  row: moving.row!,
+                }
+              : slot,
+          )
+        : previousSlots.filter((slot) => !targetIds.has(slot.tile_id));
+    const nextItems = previous.map((item) => {
+      if (item.id === ownedId) {
+        return { ...item, garden_tile_id: anchor.id, col, row };
       }
-      return current.filter((slot) => !targetIds.has(slot.tile_id));
+      if (canSwap && otherIsSingle && item.id === others[0].id) {
+        return {
+          ...item,
+          garden_tile_id: moving.garden_tile_id,
+          col: moving.col,
+          row: moving.row,
+        };
+      }
+      if (others.some((other) => other.id === item.id)) {
+        return { ...item, garden_tile_id: null, col: null, row: null };
+      }
+      return item;
     });
-    setOwnedItems((current) =>
-      current.map((item) => {
-        if (item.id === ownedId) {
-          return { ...item, garden_tile_id: anchor.id, col, row };
-        }
-        if (canSwap && otherIsSingle && item.id === others[0].id) {
-          return {
-            ...item,
-            garden_tile_id: moving.garden_tile_id,
-            col: moving.col,
-            row: moving.row,
-          };
-        }
-        if (others.some((other) => other.id === item.id)) {
-          return { ...item, garden_tile_id: null, col: null, row: null };
-        }
-        return item;
-      }),
-    );
+    slotsRef.current = nextSlots;
+    itemsRef.current = nextItems;
+    setSlots(nextSlots);
+    setOwnedItems(nextItems);
 
     try {
       await placeOwnedShopItem(ownedId, col, row);
-      const [nextSlots, nextItems] = await Promise.all([
+      const [loadedSlots, loadedItems] = await Promise.all([
         listGardenSlots(),
         listOwnedShopItems(),
       ]);
-      setSlots(nextSlots);
-      setOwnedItems(nextItems);
+      slotsRef.current = loadedSlots;
+      itemsRef.current = loadedItems;
+      setSlots(loadedSlots);
+      setOwnedItems(loadedItems);
     } catch (placeError) {
+      slotsRef.current = previousSlots;
+      itemsRef.current = previous;
       setSlots(previousSlots);
       setOwnedItems(previous);
       setError(
@@ -781,15 +790,19 @@ export default function GridScreen() {
   }
 
   async function clearOwnedItem(ownedId: string) {
-    const previous = ownedItems;
-    setOwnedItems((current) =>
-      current.map((item) =>
-        item.id === ownedId ? { ...item, garden_tile_id: null, col: null, row: null } : item,
-      ),
+    const previous = itemsRef.current;
+    const next = previous.map((item) =>
+      item.id === ownedId ? { ...item, garden_tile_id: null, col: null, row: null } : item,
     );
+    itemsRef.current = next;
+    setOwnedItems(next);
     try {
       await clearOwnedShopItem(ownedId);
+      const loaded = await listOwnedShopItems();
+      itemsRef.current = loaded;
+      setOwnedItems(loaded);
     } catch (clearError) {
+      itemsRef.current = previous;
       setOwnedItems(previous);
       setError(
         clearError instanceof Error ? clearError.message : "Could not pick that tile back up",
@@ -896,7 +909,44 @@ export default function GridScreen() {
   moveDragRef.current = moveDrag;
   endDragRef.current = endDrag;
 
+  function stampTile(shopItemId: string, col: number, row: number) {
+    const next = itemsRef.current.find(
+      (item) => item.shop_item_id === shopItemId && item.garden_tile_id == null,
+    );
+    if (!next) {
+      setError("No more of those tiles are left in your kit");
+      return Promise.resolve();
+    }
+    setError(null);
+    return placeOwnedItem(next.id, col, row);
+  }
+
+  function erasePlot(col: number, row: number) {
+    const item = itemsRef.current.find((owned) => itemCovers(owned, col, row));
+    if (item) {
+      setError(null);
+      return clearOwnedItem(item.id);
+    }
+    const slot = slotsRef.current.find((entry) => entry.col === col && entry.row === row);
+    if (slot) {
+      setError(null);
+      return removeFromSlot(col, row);
+    }
+    return Promise.resolve();
+  }
+
   function handleSlotPress(col: number, row: number) {
+    if (deleting) {
+      placeQueue.current = placeQueue.current.catch(() => undefined).then(() => erasePlot(col, row));
+      return;
+    }
+    if (selectedShopItemId) {
+      const shopItemId = selectedShopItemId;
+      placeQueue.current = placeQueue.current
+        .catch(() => undefined)
+        .then(() => stampTile(shopItemId, col, row));
+      return;
+    }
     if (selectedPlantId) {
       void placePlant(selectedPlantId, col, row);
       return;
@@ -907,6 +957,46 @@ export default function GridScreen() {
     }
   }
 
+  const stampItem = selectedShopItemId
+    ? ownedItems.find(
+        (item) => item.shop_item_id === selectedShopItemId && item.garden_tile_id == null,
+      ) ?? null
+    : null;
+  const aimCells = useMemo(() => {
+    if (!stampItem || !aimKey || deleting) {
+      return new Set<string>();
+    }
+    const [col, row] = aimKey.split(":").map(Number);
+    return new Set(itemCells(col, row, stampItem).map((cell) => tileKey(cell.col, cell.row)));
+  }, [aimKey, deleting, stampItem]);
+  const eraseCells = useMemo(() => {
+    if (!deleting || !aimKey) {
+      return new Set<string>();
+    }
+    const [col, row] = aimKey.split(":").map(Number);
+    const item = ownedItems.find((owned) => itemCovers(owned, col, row));
+    if (item?.col != null && item.row != null) {
+      return new Set(itemCells(item.col, item.row, item).map((cell) => tileKey(cell.col, cell.row)));
+    }
+    return new Set([aimKey]);
+  }, [aimKey, deleting, ownedItems]);
+  const tileStacks = useMemo(() => {
+    const groups = new Map<string, OwnedShopItem[]>();
+    for (const item of ownedItems) {
+      const copies = groups.get(item.shop_item_id) ?? [];
+      copies.push(item);
+      groups.set(item.shop_item_id, copies);
+    }
+    return [...groups.values()].map((copies) => {
+      const unplaced = copies.filter((item) => item.garden_tile_id == null);
+      return {
+        shopItemId: copies[0].shop_item_id,
+        sample: unplaced[0] ?? copies[0],
+        count: copies.length,
+        unplacedCount: unplaced.length,
+      };
+    });
+  }, [ownedItems]);
   const draggingPlant = drag?.kind === "plant" ? plantsById.get(drag.id) : undefined;
   const draggingItem = drag?.kind === "item" ? ownedItems.find((item) => item.id === drag.id) : undefined;
   const lightIndex = useGardenLightIndex();
@@ -1015,7 +1105,8 @@ export default function GridScreen() {
                               const plant = occupant
                                 ? plantsById.get(occupant.plant_id)
                                 : undefined;
-                              const highlighted = hoverSlot === key;
+                              const highlighted =
+                                hoverSlot === key || aimCells.has(key) || eraseCells.has(key);
                               const plot = tiles.find(
                                 (item) => item.col === col && item.row === row,
                               );
@@ -1046,6 +1137,7 @@ export default function GridScreen() {
                                     occupant?.plant_id === selectedPlantId
                                   }
                                   highlighted={highlighted}
+                                  danger={deleting && eraseCells.has(key)}
                                   sourceDragging={isDragSource}
                                   dragLocked={drag != null && !isDragSource}
                                   onLayoutView={(view) => {
@@ -1059,6 +1151,16 @@ export default function GridScreen() {
                                       handleSlotPress(col, row);
                                     }
                                   }}
+                                  onAim={
+                                    owned && (stampItem || deleting)
+                                      ? () => setAimKey(key)
+                                      : undefined
+                                  }
+                                  onAimEnd={
+                                    owned && (stampItem || deleting)
+                                      ? () => setAimKey((current) => (current === key ? null : current))
+                                      : undefined
+                                  }
                                   onLongPress={() => {
                                     if (occupant) {
                                       void removeFromSlot(col, row);
@@ -1184,7 +1286,13 @@ export default function GridScreen() {
                   Plants and tiles
                 </ThemedText>
                 <ThemedText type="small" style={styles.drawerHint}>
-                  Drag one onto another and they swap places. Turn a bench so it faces the other way.
+                  {deleting
+                    ? "Tap plots to pick up what's there. Tap Delete again when you are done."
+                    : selectedShopItemId
+                      ? stampItem
+                        ? `Tap plots to keep laying ${stampItem.name}. Tap that tile again when you are done.`
+                        : "Those tiles are all placed. Tap the tile again to stop."
+                      : "Tap a stack, then tap plots to lay copies. Delete works the same way."}
                 </ThemedText>
               </View>
               <ScrollView
@@ -1224,11 +1332,14 @@ export default function GridScreen() {
                           placed={placedIndex != null}
                           selected={selectedPlantId === plant.id}
                           dragging={drag?.kind === "plant" && drag.id === plant.id}
-                          onPress={() =>
+                          onPress={() => {
+                            setDeleting(false);
+                            setSelectedShopItemId(null);
+                            setAimKey(null);
                             setSelectedPlantId((current) =>
                               current === plant.id ? null : plant.id,
-                            )
-                          }
+                            );
+                          }}
                           onDragStart={(plantId, x, y) => startDrag("plant", plantId, x, y)}
                           onDragMove={moveDrag}
                           onDragEnd={(x, y) => endDrag(x, y)}
@@ -1243,10 +1354,28 @@ export default function GridScreen() {
                     <ThemedText type="smallBold" style={styles.drawerTitle}>
                       Tiles
                     </ThemedText>
-                    <View style={styles.countPill}>
-                      <ThemedText type="smallBold" style={styles.countPillText}>
-                        {ownedItems.length}
-                      </ThemedText>
+                    <View style={styles.tileHeaderActions}>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: deleting }}
+                        accessibilityLabel={deleting ? "Stop deleting" : "Delete from the garden"}
+                        onPress={() => {
+                          setSelectedPlantId(null);
+                          setSelectedShopItemId(null);
+                          setAimKey(null);
+                          setDeleting((on) => !on);
+                        }}
+                        style={[styles.deleteButton, deleting && styles.deleteButtonOn]}
+                      >
+                        <ThemedText type="smallBold" style={styles.deleteButtonText}>
+                          Delete
+                        </ThemedText>
+                      </Pressable>
+                      <View style={styles.countPill}>
+                        <ThemedText type="smallBold" style={styles.countPillText}>
+                          {ownedItems.length}
+                        </ThemedText>
+                      </View>
                     </View>
                   </View>
                   {ownedItems.length === 0 ? (
@@ -1257,16 +1386,45 @@ export default function GridScreen() {
                     </View>
                   ) : (
                     <View style={styles.tileGrid}>
-                      {ownedItems.map((item) => (
+                      {tileStacks.map((stack) => (
                         <KitTile
-                          key={item.id}
-                          item={item}
-                          dragging={drag?.kind === "item" && drag.id === item.id}
-                          onDragStart={(x, y) => startDrag("item", item.id, x, y)}
+                          key={stack.shopItemId}
+                          item={stack.sample}
+                          count={stack.count}
+                          selected={stack.shopItemId === selectedShopItemId}
+                          dragging={
+                            drag?.kind === "item" &&
+                            ownedItems.some(
+                              (owned) => owned.id === drag.id && owned.shop_item_id === stack.shopItemId,
+                            )
+                          }
+                          onPress={() => {
+                            setDeleting(false);
+                            setSelectedPlantId(null);
+                            setAimKey(null);
+                            setSelectedShopItemId((current) =>
+                              current === stack.shopItemId ? null : stack.shopItemId,
+                            );
+                          }}
+                          onDragStart={(x, y) => {
+                            const next = itemsRef.current.find(
+                              (owned) =>
+                                owned.shop_item_id === stack.shopItemId && owned.garden_tile_id == null,
+                            );
+                            if (next) {
+                              startDrag("item", next.id, x, y);
+                            }
+                          }}
                           onDragMove={moveDrag}
                           onDragEnd={endDrag}
                           onTurn={() => {
-                            void turnOwnedItem(item.id);
+                            const next = itemsRef.current.find(
+                              (owned) =>
+                                owned.shop_item_id === stack.shopItemId && owned.garden_tile_id == null,
+                            );
+                            if (next) {
+                              void turnOwnedItem(next.id);
+                            }
                           }}
                         />
                       ))}
@@ -1394,6 +1552,7 @@ const GardenSlotCell = memo(function GardenSlotCell({
   bed,
   selected,
   highlighted,
+  danger = false,
   pathUrl = null,
   imageFit = "cover",
   stoneGround = false,
@@ -1406,6 +1565,8 @@ const GardenSlotCell = memo(function GardenSlotCell({
   onDragStart,
   onDragMove,
   onDragEnd,
+  onAim,
+  onAimEnd,
   showTurn = false,
   onTurn,
 }: {
@@ -1424,6 +1585,7 @@ const GardenSlotCell = memo(function GardenSlotCell({
   };
   selected: boolean;
   highlighted: boolean;
+  danger?: boolean;
   pathUrl?: string | null;
   imageFit?: "cover" | "contain";
   stoneGround?: boolean;
@@ -1436,6 +1598,8 @@ const GardenSlotCell = memo(function GardenSlotCell({
   onDragStart: (kind: DragState["kind"], id: string, x: number, y: number) => void;
   onDragMove: (x: number, y: number) => void;
   onDragEnd: (x: number, y: number) => void;
+  onAim?: () => void;
+  onAimEnd?: () => void;
   showTurn?: boolean;
   onTurn?: () => void;
 }) {
@@ -1484,16 +1648,22 @@ const GardenSlotCell = memo(function GardenSlotCell({
                 : "Empty plot"
       }
       onPress={onPress}
-      onHoverIn={show}
-      onHoverOut={hide}
+      onHoverIn={() => {
+        show();
+        onAim?.();
+      }}
+      onHoverOut={() => {
+        hide();
+        onAimEnd?.();
+      }}
       onLongPress={mode === "plot" ? onLongPress : undefined}
       delayLongPress={350}
       style={({ pressed }) => [
         styles.slot,
         plant ? styles.slotFilled : null,
         {
-          backgroundColor: highlighted ? bed.plotHover : bed.plot,
-          borderColor: bed.wood,
+          backgroundColor: highlighted ? (danger ? "#E7C4B8" : bed.plotHover) : bed.plot,
+          borderColor: danger && highlighted ? GardenPalette.panelDanger : bed.wood,
         },
         (selected || highlighted) && { borderWidth: 2 },
         sourceDragging && styles.draggingSource,
@@ -1690,6 +1860,10 @@ const OwnedTile = memo(function OwnedTile({
   rotation = 0,
   fit = "cover",
   lamp = false,
+  selected = false,
+  onPress,
+  onHoverIn,
+  onHoverOut,
   onDragStart,
   onDragMove,
   onDragEnd,
@@ -1701,6 +1875,10 @@ const OwnedTile = memo(function OwnedTile({
   rotation?: number;
   fit?: "cover" | "contain";
   lamp?: boolean;
+  selected?: boolean;
+  onPress?: () => void;
+  onHoverIn?: () => void;
+  onHoverOut?: () => void;
   onDragStart: (x: number, y: number) => void;
   onDragMove: (x: number, y: number) => void;
   onDragEnd: (x: number, y: number) => void;
@@ -1722,23 +1900,40 @@ const OwnedTile = memo(function OwnedTile({
 
   return (
     <GestureDetector gesture={gesture}>
-      <View style={[styles.dragHandle, placed && styles.placedTile, dragging && styles.draggingSource]}>
+      <Pressable
+        accessibilityRole="button"
+        onPress={onPress}
+        onHoverIn={onHoverIn}
+        onHoverOut={onHoverOut}
+        style={[
+          styles.dragHandle,
+          placed && styles.placedTile,
+          dragging && styles.draggingSource,
+          selected && styles.armedTile,
+        ]}
+      >
         <OwnedTileFace name={name} imageUrl={imageUrl} rotation={rotation} fit={fit} lamp={lamp} />
-      </View>
+      </Pressable>
     </GestureDetector>
   );
 });
 
 function KitTile({
   item,
+  count,
+  selected,
   dragging,
+  onPress,
   onDragStart,
   onDragMove,
   onDragEnd,
   onTurn,
 }: {
   item: OwnedShopItem;
+  count: number;
+  selected: boolean;
   dragging: boolean;
+  onPress: () => void;
   onDragStart: (x: number, y: number) => void;
   onDragMove: (x: number, y: number) => void;
   onDragEnd: (x: number, y: number) => void;
@@ -1747,24 +1942,38 @@ function KitTile({
   const { hovered, show, hide } = useHoverFlag();
   const wide = item.footprint_cols * item.footprint_rows > 1;
   const reveal = hovered || Platform.OS !== "web";
+  const inKit = item.garden_tile_id == null;
 
   return (
     <View style={styles.tileStack}>
-      <Pressable onHoverIn={show} onHoverOut={hide}>
+      <View style={styles.stackWrap}>
+        {count > 2 ? <View style={[styles.stackCard, styles.stackCardFar]} /> : null}
+        {count > 1 ? <View style={[styles.stackCard, styles.stackCardNear]} /> : null}
         <OwnedTile
           name={item.name}
           imageUrl={shopItemImageUrl(item.image_path)}
-          placed={item.garden_tile_id != null}
+          placed={!inKit}
           rotation={item.rotation}
           fit={wide || item.slug === "light" ? "contain" : "cover"}
           lamp={item.slug === "light"}
+          selected={selected}
           dragging={dragging}
+          onPress={onPress}
+          onHoverIn={show}
+          onHoverOut={hide}
           onDragStart={onDragStart}
           onDragMove={onDragMove}
           onDragEnd={onDragEnd}
         />
-      </Pressable>
-      {wide && reveal ? (
+        {count > 1 ? (
+          <View style={styles.stackBadge} pointerEvents="none">
+            <ThemedText type="smallBold" style={styles.stackBadgeText}>
+              {count}
+            </ThemedText>
+          </View>
+        ) : null}
+      </View>
+      {wide && inKit && reveal ? (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`Turn ${item.name}`}
@@ -2010,6 +2219,60 @@ const styles = StyleSheet.create({
   tileStack: {
     alignItems: "center",
     gap: Spacing.one,
+    paddingTop: 8,
+  },
+  stackWrap: {
+    width: 72,
+    height: 72,
+  },
+  stackCard: {
+    position: "absolute",
+    width: 72,
+    height: 72,
+    borderRadius: Radius.sm,
+    backgroundColor: GardenPalette.woodOuter,
+    borderWidth: 1,
+    borderColor: GardenPalette.panelBorder,
+  },
+  stackCardNear: {
+    top: -4,
+    left: 4,
+  },
+  stackCardFar: {
+    top: -8,
+    left: 8,
+  },
+  stackBadge: {
+    position: "absolute",
+    top: -6,
+    right: -6,
+    minWidth: 22,
+    height: 22,
+    paddingHorizontal: 5,
+    borderRadius: Radius.pill,
+    backgroundColor: GardenPalette.bar,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stackBadgeText: {
+    color: GardenPalette.barText,
+  },
+  tileHeaderActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.two,
+  },
+  deleteButton: {
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.one,
+    borderRadius: Radius.pill,
+    backgroundColor: GardenPalette.bar,
+  },
+  deleteButtonOn: {
+    backgroundColor: GardenPalette.panelDanger,
+  },
+  deleteButtonText: {
+    color: GardenPalette.barText,
   },
   turnButton: {
     paddingHorizontal: Spacing.two,
@@ -2082,6 +2345,11 @@ const styles = StyleSheet.create({
   },
   dragHandle: {
     touchAction: "none",
+  },
+  armedTile: {
+    borderWidth: 2,
+    borderColor: GardenPalette.highlight,
+    borderRadius: Radius.sm,
   },
   ownedTile: {
     width: 72,

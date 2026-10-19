@@ -58,6 +58,45 @@ export function gardenTilePrice(ownedCount: number) {
   };
 }
 
+/** Price of the next `count` plots, each one higher than the last. */
+export function gardenTilesPrice(ownedCount: number, count: number) {
+  const lines = Array.from({ length: Math.max(0, count) }, (_, index) => gardenTilePrice(ownedCount + index));
+  return {
+    oxygen: lines.reduce((sum, line) => sum + line.oxygen, 0),
+    pollen: lines.reduce((sum, line) => sum + line.pollen, 0),
+    lines,
+  };
+}
+
+/** Keep selected plots that still touch the garden, in the order they were picked. */
+export function connectedPlotKeys(owned: { col: number; row: number }[], selected: string[]) {
+  const ownedKeys = new Set(owned.map((tile) => tileKey(tile.col, tile.row)));
+  const selectedSet = new Set(selected);
+  const reached = new Set<string>();
+  const queue = [...ownedKeys];
+
+  while (queue.length > 0) {
+    const key = queue.pop();
+    if (!key) {
+      continue;
+    }
+    const [col, row] = key.split(':').map(Number);
+    for (const next of [
+      tileKey(col + 1, row),
+      tileKey(col - 1, row),
+      tileKey(col, row + 1),
+      tileKey(col, row - 1),
+    ]) {
+      if (selectedSet.has(next) && !reached.has(next)) {
+        reached.add(next);
+        queue.push(next);
+      }
+    }
+  }
+
+  return selected.filter((key) => reached.has(key));
+}
+
 export function isOutskirtsTile(tiles: Pick<GardenTile, 'col' | 'row'>[], col: number, row: number) {
   if (tiles.some((tile) => tile.col === col && tile.row === row)) {
     return false;
@@ -191,9 +230,12 @@ export async function clearGardenSlot(col: number, row: number) {
 }
 
 export async function buyGardenTile(col: number, row: number) {
-  const { error } = await supabase.rpc('buy_garden_tile', {
-    target_col: col,
-    target_row: row,
+  await buyGardenTiles([{ col, row }]);
+}
+
+export async function buyGardenTiles(cells: { col: number; row: number }[]) {
+  const { error } = await supabase.rpc('buy_garden_tiles', {
+    targets: cells,
   });
 
   if (error) {

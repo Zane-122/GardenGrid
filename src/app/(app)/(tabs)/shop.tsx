@@ -12,10 +12,12 @@ import { ThemedView } from '@/components/themed-view';
 import { GardenPalette, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import {
-  buyGardenTile,
+  buyGardenTiles,
+  connectedPlotKeys,
   GARDEN_SLOT_GAP,
   gardenBoardSize,
   gardenTilePrice,
+  gardenTilesPrice,
   gardenViewBounds,
   isOutskirtsTile,
   listGardenSlots,
@@ -44,6 +46,7 @@ export default function ShopScreen() {
   const [catalog, setCatalog] = useState<ShopItem[]>([]);
   const [buyingItemId, setBuyingItemId] = useState<string | null>(null);
   const [pendingItemId, setPendingItemId] = useState<string | null>(null);
+  const [quantity, setQuantity] = useState(1);
   const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -74,26 +77,26 @@ export default function ShopScreen() {
 
   const price = gardenTilePrice(tiles.length);
 
-  async function purchase(col: number, row: number) {
-    if (buying) {
+  async function purchase(cells: { col: number; row: number }[]) {
+    if (buying || cells.length === 0) {
       return;
     }
 
     setBuying(true);
     setError(null);
     try {
-      await buyGardenTile(col, row);
+      await buyGardenTiles(cells);
       setTiles(await listGardenTiles());
       setPickerOpen(false);
     } catch (buyError) {
-      setError(errorText(buyError, 'Could not buy that plot'));
+      setError(errorText(buyError, 'Could not buy those plots'));
     } finally {
       setBuying(false);
     }
   }
 
-  async function purchaseItem(item: ShopItem) {
-    if (buying || buyingItemId) {
+  async function purchaseItem(item: ShopItem, copies: number) {
+    if (buying || buyingItemId || copies < 1) {
       return;
     }
 
@@ -101,9 +104,14 @@ export default function ShopScreen() {
     setError(null);
     setNotice(null);
     try {
-      await buyShopItem(item.id);
+      await buyShopItem(item.id, copies);
       setPendingItemId(null);
-      setNotice(`${item.name} added. Drag it onto a plot from the grid.`);
+      setQuantity(1);
+      setNotice(
+        copies === 1
+          ? `${item.name} added. Drag it onto a plot from the grid.`
+          : `${copies} ${item.name} added. Drag them onto a plot from the grid.`,
+      );
     } catch (buyError) {
       setError(errorText(buyError, 'Could not buy that item'));
     } finally {
@@ -126,15 +134,37 @@ export default function ShopScreen() {
 
         <ThemedText type="smallBold">Plots</ThemedText>
         <GardenFrame contentStyle={styles.offer}>
-          <ThemedText type="smallBold">Garden plot</ThemedText>
-          <ThemedText themeColor="textSecondary">
-            Adds a single plot that shares an edge with land you already own.
-          </ThemedText>
-          <ThemedText type="smallBold">
-            {price.oxygen.toLocaleString()} mL oxygen · {price.pollen.toLocaleString()} mg pollen
-          </ThemedText>
+          <View style={styles.plotLead}>
+            <View style={styles.plotMark}>
+              <View style={[styles.plotSquare, { backgroundColor: theme.backgroundElement }]} />
+              <View style={[styles.plotSquare, styles.plotSquareAdd, { borderColor: theme.primary }]}>
+                <ThemedText type="smallBold" style={{ color: theme.primary }}>
+                  +
+                </ThemedText>
+              </View>
+            </View>
+            <View style={styles.plotCopy}>
+              <ThemedText type="smallBold">Garden plots</ThemedText>
+              <ThemedText themeColor="textSecondary">
+                Add land along the edge. Pick several at once, and each one costs more than the last.
+              </ThemedText>
+            </View>
+          </View>
+          <View style={styles.priceRow}>
+            <View style={[styles.pricePill, { backgroundColor: theme.backgroundElement }]}>
+              <View style={[styles.priceDot, { backgroundColor: theme.oxygen }]} />
+              <ThemedText type="smallBold">{price.oxygen.toLocaleString()} mL</ThemedText>
+            </View>
+            <View style={[styles.pricePill, { backgroundColor: theme.backgroundElement }]}>
+              <View style={[styles.priceDot, { backgroundColor: theme.pollen }]} />
+              <ThemedText type="smallBold">{price.pollen.toLocaleString()} mg</ThemedText>
+            </View>
+            <ThemedText type="small" themeColor="textSecondary">
+              next plot
+            </ThemedText>
+          </View>
           <FriendlyButton
-            label={loading ? 'Loading…' : 'Choose a plot'}
+            label={loading ? 'Loading…' : 'Choose plots'}
             disabled={loading || buying}
             onPress={() => {
               setError(null);
@@ -167,30 +197,61 @@ export default function ShopScreen() {
                 <View style={styles.itemCopy}>
                   <ThemedText type="smallBold">{item.name}</ThemedText>
                   <ThemedText themeColor="textSecondary">{item.description}</ThemedText>
-                  <ThemedText type="smallBold">{item.oxygen_cost.toLocaleString()} mL oxygen</ThemedText>
+                  <ThemedText type="smallBold">
+                    {pendingItemId === item.id
+                      ? `${(item.oxygen_cost * quantity).toLocaleString()} mL oxygen`
+                      : `${item.oxygen_cost.toLocaleString()} mL oxygen each`}
+                  </ThemedText>
                   {pendingItemId === item.id ? (
-                    <View style={styles.itemActions}>
-                      <FriendlyButton
-                        label="Cancel"
-                        variant="ghost"
-                        disabled={buyingItemId !== null}
-                        onPress={() => setPendingItemId(null)}
-                      />
-                      <FriendlyButton
-                        label={buyingItemId === item.id ? 'Buying…' : 'Confirm'}
-                        disabled={loading || buying || buyingItemId !== null}
-                        onPress={() => {
-                          void purchaseItem(item);
-                        }}
-                      />
+                    <View style={styles.itemBuy}>
+                      <View style={[styles.stepper, { borderColor: theme.border }]}>
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel="Buy one fewer"
+                          disabled={buyingItemId !== null || quantity <= 1}
+                          onPress={() => setQuantity((count) => Math.max(1, count - 1))}
+                          style={styles.step}>
+                          <ThemedText type="smallBold">−</ThemedText>
+                        </Pressable>
+                        <ThemedText type="smallBold" style={styles.stepCount}>
+                          {quantity}
+                        </ThemedText>
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel="Buy one more"
+                          disabled={buyingItemId !== null || quantity >= 36}
+                          onPress={() => setQuantity((count) => Math.min(36, count + 1))}
+                          style={styles.step}>
+                          <ThemedText type="smallBold">+</ThemedText>
+                        </Pressable>
+                      </View>
+                      <View style={styles.itemActions}>
+                        <FriendlyButton
+                          label="Cancel"
+                          variant="ghost"
+                          disabled={buyingItemId !== null}
+                          onPress={() => {
+                            setPendingItemId(null);
+                            setQuantity(1);
+                          }}
+                        />
+                        <FriendlyButton
+                          label={buyingItemId === item.id ? 'Buying…' : `Buy ${quantity}`}
+                          disabled={loading || buying || buyingItemId !== null}
+                          onPress={() => {
+                            void purchaseItem(item, quantity);
+                          }}
+                        />
+                      </View>
                     </View>
                   ) : (
                     <FriendlyButton
-                      label="Buy one"
+                      label="Buy"
                       disabled={loading || buying || buyingItemId !== null}
                       onPress={() => {
                         setError(null);
                         setNotice(null);
+                        setQuantity(1);
                         setPendingItemId(item.id);
                       }}
                     />
@@ -209,8 +270,6 @@ export default function ShopScreen() {
         plants={plants}
         buying={buying}
         error={error}
-        oxygen={price.oxygen}
-        pollen={price.pollen}
         windowWidth={windowWidth}
         windowHeight={windowHeight}
         onClose={() => {
@@ -218,8 +277,8 @@ export default function ShopScreen() {
             setPickerOpen(false);
           }
         }}
-        onBuy={(col, row) => {
-          void purchase(col, row);
+        onBuy={(cells) => {
+          void purchase(cells);
         }}
       />
     </ThemedView>
@@ -233,8 +292,6 @@ function PlotPicker({
   plants,
   buying,
   error,
-  oxygen,
-  pollen,
   windowWidth,
   windowHeight,
   onClose,
@@ -246,22 +303,30 @@ function PlotPicker({
   plants: InventoryPlant[];
   buying: boolean;
   error: string | null;
-  oxygen: number;
-  pollen: number;
   windowWidth: number;
   windowHeight: number;
   onClose: () => void;
-  onBuy: (col: number, row: number) => void;
+  onBuy: (cells: { col: number; row: number }[]) => void;
 }) {
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string[]>([]);
   const plantsById = useMemo(() => new Map(plants.map((plant) => [plant.id, plant])), [plants]);
   const slotMap = useMemo(() => new Map(slots.map((slot) => [tileKey(slot.col, slot.row), slot])), [slots]);
-  const bounds = useMemo(() => gardenViewBounds(tiles, 1), [tiles]);
+  const selectedCells = useMemo(
+    () =>
+      selected.map((key) => {
+        const [col, row] = key.split(':').map(Number);
+        return { col, row };
+      }),
+    [selected],
+  );
+  const land = useMemo(() => [...tiles, ...selectedCells], [selectedCells, tiles]);
+  const bounds = useMemo(() => gardenViewBounds(land, 1), [land]);
   const viewColumns = bounds.maxCol - bounds.minCol + 1;
   const viewRows = bounds.maxRow - bounds.minRow + 1;
+  const quote = gardenTilesPrice(tiles.length, selected.length);
   const boardSize = useMemo(() => {
     const horizontalPad = Spacing.four * 2 + 16;
-    const verticalReserve = 220;
+    const verticalReserve = 280;
     return gardenBoardSize(
       Math.max(0, windowWidth - horizontalPad - GARDEN_SHAPE_BORDER * 2),
       Math.max(160, windowHeight - verticalReserve - GARDEN_SHAPE_BORDER * 2),
@@ -272,9 +337,28 @@ function PlotPicker({
 
   useEffect(() => {
     if (!visible) {
-      setSelected(null);
+      setSelected([]);
     }
   }, [visible]);
+
+  function toggle(key: string) {
+    setSelected((current) => {
+      if (current.includes(key)) {
+        return connectedPlotKeys(
+          tiles,
+          current.filter((item) => item !== key),
+        );
+      }
+      return [...current, key];
+    });
+  }
+
+  const buyLabel =
+    selected.length === 0
+      ? 'Select plots'
+      : buying
+        ? 'Buying…'
+        : `Buy ${selected.length} ${selected.length === 1 ? 'plot' : 'plots'}`;
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -282,12 +366,10 @@ function PlotPicker({
         <View style={styles.picker}>
           <View style={styles.pickerHeader}>
             <ThemedText type="heading" style={{ color: GardenPalette.panelText }}>
-              Pick one plot
+              Add plots
             </ThemedText>
             <ThemedText type="small" style={{ color: GardenPalette.panelTextSecondary }}>
-              {selected
-                ? `Buy this plot for ${oxygen.toLocaleString()} mL oxygen and ${pollen.toLocaleString()} mg pollen.`
-                : 'Tap a + on the edge, then confirm the purchase.'}
+              Tap open ground along the edge. A later plot in this purchase costs more than an earlier one.
             </ThemedText>
           </View>
 
@@ -297,12 +379,12 @@ function PlotPicker({
             </ThemedText>
           ) : null}
 
-          <View style={styles.boardCenter}>
-            <View style={styles.frameOuter}>
-              <View style={[styles.frameInner, { padding: GARDEN_SHAPE_BORDER }]}>
+          <ScrollView style={{ maxHeight: windowHeight * 0.46 }} contentContainerStyle={styles.boardCenter}>
+            <View style={styles.lawn}>
+              <View style={{ padding: GARDEN_SHAPE_BORDER }}>
                 <View style={[styles.board, { width: boardSize.width, height: boardSize.height }]}>
                   <GardenBed
-                    tiles={tiles}
+                    tiles={land}
                     minCol={bounds.minCol}
                     minRow={bounds.minRow}
                     columns={viewColumns}
@@ -317,48 +399,55 @@ function PlotPicker({
                           const col = bounds.minCol + columnOffset;
                           const key = tileKey(col, row);
                           const owned = tiles.some((tile) => tile.col === col && tile.row === row);
-                          const forSale = !owned && isOutskirtsTile(tiles, col, row);
+                          const order = selected.indexOf(key);
+                          const chosen = order >= 0;
+                          const forSale = !owned && !chosen && isOutskirtsTile(land, col, row);
                           const occupant = slotMap.get(key);
                           const plant = occupant ? plantsById.get(occupant.plant_id) : undefined;
 
-                          if (!owned && !forSale) {
-                            return (
-                              <View key={key} style={{ width: boardSize.cell, height: boardSize.cell }} />
-                            );
+                          if (!owned && !forSale && !chosen) {
+                            return <View key={key} style={{ width: boardSize.cell, height: boardSize.cell }} />;
                           }
-
-                          const chosen = selected === key;
 
                           return (
                             <View key={key} style={{ width: boardSize.cell, height: boardSize.cell }}>
                               <Pressable
                                 accessibilityRole="button"
                                 accessibilityLabel={
-                                  plant ? plantDisplayName(plant.info) : forSale ? 'Choose this plot' : 'Owned plot'
+                                  plant
+                                    ? plantDisplayName(plant.info)
+                                    : chosen
+                                      ? `Plot ${order + 1}, tap to remove`
+                                      : forSale
+                                        ? 'Add this plot'
+                                        : 'Owned plot'
                                 }
-                                disabled={!forSale || buying}
-                                onPress={() => setSelected(key)}
+                                disabled={(!forSale && !chosen) || buying}
+                                onPress={() => toggle(key)}
                                 style={({ pressed }) => [
                                   styles.slot,
+                                  chosen ? styles.chosenSlot : null,
                                   forSale ? styles.buySlot : null,
                                   {
                                     backgroundColor: chosen
                                       ? GardenPalette.highlight
                                       : forSale
-                                        ? 'transparent'
+                                        ? 'rgba(242, 201, 76, 0.16)'
                                         : GardenPalette.plot,
                                     borderColor: GardenPalette.highlight,
                                   },
-                                  forSale && styles.buyBorder,
-                                  pressed && forSale && styles.pressed,
+                                  (forSale || chosen) && styles.buyBorder,
+                                  pressed && (forSale || chosen) && styles.pressed,
                                 ]}>
                                 {plant ? (
                                   <PlantToken plant={plant} />
+                                ) : chosen ? (
+                                  <ThemedText type="smallBold" style={{ color: GardenPalette.panelText }}>
+                                    {order + 1}
+                                  </ThemedText>
                                 ) : forSale ? (
-                                  <ThemedText
-                                    type="smallBold"
-                                    style={{ color: chosen ? GardenPalette.panelText : GardenPalette.highlight }}>
-                                    {buying && chosen ? '…' : '+'}
+                                  <ThemedText type="smallBold" style={{ color: GardenPalette.highlight }}>
+                                    +
                                   </ThemedText>
                                 ) : (
                                   <Image
@@ -378,27 +467,42 @@ function PlotPicker({
                 </View>
               </View>
             </View>
+          </ScrollView>
+
+          <View style={styles.receipt}>
+            {quote.lines.length === 0 ? (
+              <ThemedText type="small" style={{ color: GardenPalette.panelTextSecondary }}>
+                Nothing selected yet.
+              </ThemedText>
+            ) : (
+              <ScrollView style={styles.receiptLines}>
+                {quote.lines.map((line, index) => (
+                  <View key={index} style={styles.receiptLine}>
+                    <ThemedText type="smallBold" style={{ color: GardenPalette.panelText }}>
+                      {index + 1}
+                    </ThemedText>
+                    <ThemedText type="small" style={{ color: GardenPalette.panelTextSecondary }}>
+                      {line.oxygen.toLocaleString()} mL oxygen · {line.pollen.toLocaleString()} mg pollen
+                    </ThemedText>
+                  </View>
+                ))}
+              </ScrollView>
+            )}
+            <View style={styles.receiptTotal}>
+              <ThemedText type="smallBold" style={{ color: GardenPalette.panelText }}>
+                {quote.lines.length === 0
+                  ? 'Total'
+                  : `${quote.oxygen.toLocaleString()} mL · ${quote.pollen.toLocaleString()} mg`}
+              </ThemedText>
+            </View>
           </View>
 
-          {selected ? (
-            <FriendlyButton
-              label={buying ? 'Buying…' : 'Buy this plot'}
-              disabled={buying}
-              onPress={() => {
-                const [col, row] = selected.split(':').map(Number);
-                onBuy(col, row);
-              }}
-            />
-          ) : null}
           <FriendlyButton
-            label="Close"
-            variant="ghost"
-            disabled={buying}
-            onPress={() => {
-              setSelected(null);
-              onClose();
-            }}
+            label={buyLabel}
+            disabled={buying || selected.length === 0}
+            onPress={() => onBuy(selectedCells)}
           />
+          <FriendlyButton label="Close" variant="ghost" disabled={buying} onPress={onClose} />
         </View>
       </View>
     </Modal>
@@ -425,7 +529,54 @@ const styles = StyleSheet.create({
     gap: Spacing.half,
   },
   offer: {
+    gap: Spacing.three,
+  },
+  plotLead: {
+    flexDirection: 'row',
+    gap: Spacing.three,
+    alignItems: 'center',
+  },
+  plotMark: {
+    width: 72,
+    height: 72,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  plotSquare: {
+    width: 33,
+    height: 33,
+    borderRadius: Radius.sm,
+  },
+  plotSquareAdd: {
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+  },
+  plotCopy: {
+    flex: 1,
+    gap: Spacing.one,
+  },
+  priceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: Spacing.two,
+    flexWrap: 'wrap',
+  },
+  pricePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.one,
+    borderRadius: Radius.pill,
+    paddingVertical: Spacing.one,
+    paddingHorizontal: Spacing.two,
+  },
+  priceDot: {
+    width: 8,
+    height: 8,
+    borderRadius: Radius.pill,
   },
   itemOffer: {
     flexDirection: 'row',
@@ -448,6 +599,27 @@ const styles = StyleSheet.create({
   itemCopy: {
     flex: 1,
     gap: Spacing.two,
+  },
+  itemBuy: {
+    gap: Spacing.two,
+  },
+  stepper: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: Radius.pill,
+    overflow: 'hidden',
+  },
+  step: {
+    width: 40,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepCount: {
+    minWidth: 28,
+    textAlign: 'center',
   },
   itemActions: {
     flexDirection: 'row',
@@ -475,11 +647,13 @@ const styles = StyleSheet.create({
   },
   boardCenter: {
     alignItems: 'center',
+    paddingVertical: Spacing.one,
   },
-  frameOuter: {
-    padding: 0,
+  lawn: {
+    backgroundColor: GardenPalette.grass,
+    borderRadius: Radius.lg,
+    padding: Spacing.two,
   },
-  frameInner: {},
   board: {
     gap: GARDEN_SLOT_GAP,
   },
@@ -497,6 +671,29 @@ const styles = StyleSheet.create({
   },
   buySlot: {
     borderStyle: 'dashed',
+  },
+  chosenSlot: {
+    borderStyle: 'solid',
+  },
+  receipt: {
+    gap: Spacing.one,
+    padding: Spacing.two,
+    borderRadius: Radius.sm,
+    backgroundColor: 'rgba(78, 51, 28, 0.06)',
+  },
+  receiptLines: {
+    maxHeight: 96,
+  },
+  receiptLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  receiptTotal: {
+    marginTop: Spacing.one,
+    paddingTop: Spacing.one,
+    borderTopWidth: 1,
+    borderTopColor: GardenPalette.panelBorder,
   },
   buyBorder: {
     borderWidth: 2,

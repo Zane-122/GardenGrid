@@ -131,8 +131,8 @@ export async function listOwnedShopItems() {
   }) satisfies OwnedShopItem[];
 }
 
-export async function buyShopItem(shopItemId: string) {
-  const { error } = await supabase.rpc('buy_shop_item', { target_item: shopItemId });
+export async function buyShopItem(shopItemId: string, copies = 1) {
+  const { error } = await supabase.rpc('buy_shop_item', { target_item: shopItemId, copies });
   if (error) {
     throw error;
   }
