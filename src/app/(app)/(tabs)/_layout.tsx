@@ -88,6 +88,19 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="communities"
+        options={{
+          title: 'Communities',
+          tabBarIcon: ({ color, size }) => (
+            <SymbolView
+              name={{ ios: 'person.3.fill', android: 'groups', web: 'groups' }}
+              tintColor={color}
+              size={size}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="shop"
         options={{
           title: 'Shop',

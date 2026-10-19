@@ -19,7 +19,7 @@ import {
   type GardenSlot,
   type GardenTile,
 } from "@/utils/garden";
-import type { InventoryPlant } from "@/utils/plants";
+import { plantImageUrl, type InventoryPlant } from "@/utils/plants";
 import { itemCells, itemSpan, shopItemImageUrl, type OwnedShopItem } from "@/utils/shop-items";
 
 const MIN_ZOOM = 0.45;
@@ -121,15 +121,34 @@ export function FriendGardenModal({ friend, onClose }: FriendGardenModalProps) {
     [items],
   );
 
-  const grassPad = Math.ceil(Math.max(windowWidth, windowHeight, 1) / 0.35);
+  const grassPad = Math.ceil(Math.max(windowWidth, windowHeight, 1) / MIN_ZOOM);
+  const grassW = boardSize.width + GARDEN_SHAPE_BORDER * 2 + grassPad * 2;
+  const grassH = boardSize.height + GARDEN_SHAPE_BORDER * 2 + grassPad * 2;
+
+  useEffect(() => {
+    const urls = [
+      ...plants.map((plant) => plantImageUrl(plant)),
+      ...items.map((item) => shopItemImageUrl(item.image_path)),
+    ].filter((url): url is string => Boolean(url));
+    if (urls.length > 0) {
+      void Image.prefetch(urls, "memory-disk");
+    }
+  }, [items, plants]);
   const cameraStyle = useAnimatedStyle(() => ({
     transformOrigin: "left top",
     transform: [{ translateX: txSv.value }, { translateY: tySv.value }, { scale: scaleSv.value }],
   }));
-  const grassStyle = useAnimatedStyle(() => ({
-    transformOrigin: `${grassPad}px ${grassPad}px`,
-    transform: [{ translateX: txSv.value }, { translateY: tySv.value }, { scale: scaleSv.value }],
-  }));
+  const grassStyle = useAnimatedStyle(() => {
+    const scale = scaleSv.value;
+    return {
+      transformOrigin: "left top",
+      transform: [
+        { translateX: txSv.value + grassPad * (1 - scale) },
+        { translateY: tySv.value + grassPad * (1 - scale) },
+        { scale },
+      ],
+    };
+  });
 
   function applyCamera(scale: number, x: number, y: number) {
     const nextScale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, scale));
@@ -254,11 +273,11 @@ export function FriendGardenModal({ friend, onClose }: FriendGardenModalProps) {
             pointerEvents="none"
             style={[
               styles.grassPlane,
-              { left: -grassPad, top: -grassPad, width: grassPad * 2, height: grassPad * 2 },
+              { left: -grassPad, top: -grassPad, width: grassW, height: grassH },
               grassStyle,
             ]}
           >
-            <GardenGrass width={grassPad * 2} height={grassPad * 2} />
+            <GardenGrass width={grassW} height={grassH} />
           </Animated.View>
           <Animated.View style={[styles.camera, cameraStyle]}>
             <View style={{ padding: GARDEN_SHAPE_BORDER }}>
@@ -296,6 +315,9 @@ export function FriendGardenModal({ friend, onClose }: FriendGardenModalProps) {
                                   source={require("@/assets/images/bench-ground.png")}
                                   style={styles.fillImage}
                                   contentFit="cover"
+                                  priority="high"
+                                  cachePolicy="memory-disk"
+                                  loading="eager"
                                 />
                               ) : null}
                               {imageUrl ? (
@@ -303,6 +325,9 @@ export function FriendGardenModal({ friend, onClose }: FriendGardenModalProps) {
                                   source={{ uri: imageUrl }}
                                   style={lamp ? styles.lamp : styles.fillImage}
                                   contentFit={lamp ? "contain" : "cover"}
+                                  priority="high"
+                                  cachePolicy="memory-disk"
+                                  loading="eager"
                                 />
                               ) : null}
                               {plant ? (
@@ -312,6 +337,9 @@ export function FriendGardenModal({ friend, onClose }: FriendGardenModalProps) {
                                   source={require("@/assets/images/soil_tile.png")}
                                   style={styles.fillImage}
                                   contentFit="cover"
+                                  priority="high"
+                                  cachePolicy="memory-disk"
+                                  loading="eager"
                                 />
                               )}
                             </View>
@@ -342,6 +370,9 @@ export function FriendGardenModal({ friend, onClose }: FriendGardenModalProps) {
                         <Image
                           source={{ uri: imageUrl }}
                           contentFit="contain"
+                          priority="high"
+                          cachePolicy="memory-disk"
+                          loading="eager"
                           style={{
                             position: "absolute",
                             width: turned ? height : width,
@@ -422,7 +453,7 @@ const styles = StyleSheet.create({
   },
   grassPlane: {
     position: "absolute",
-    overflow: "hidden",
+    overflow: "visible",
     backgroundColor: GardenPalette.grass,
   },
   camera: {

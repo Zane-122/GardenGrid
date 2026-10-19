@@ -35,6 +35,9 @@ export function PlantToken({
       source={{ uri: photoUrl }}
       style={compact ? styles.compactImage : styles.slotImage}
       contentFit="cover"
+      priority="high"
+      cachePolicy="memory-disk"
+      loading="eager"
       pointerEvents="none"
     />
   ) : (

@@ -1,10 +1,13 @@
+import { Platform } from 'react-native';
+
 import { notifyCurrencyChanged } from '@/utils/plants';
 import { supabase } from '@/utils/supabase';
 
 export const GARDEN_COLUMNS = 3;
 export const GARDEN_ROWS = 4;
 export const GARDEN_SLOT_COUNT = GARDEN_COLUMNS * GARDEN_ROWS;
-export const GARDEN_SLOT_GAP = 6;
+/** Phone plots sit closer together so the gap does not swallow a small cell. */
+export const GARDEN_SLOT_GAP = Platform.OS === 'web' ? 6 : 2;
 export const GARDEN_MIN_CELL = 44;
 export const GARDEN_FRAME_PAD = 10;
 export const GARDEN_BED_PAD = 8;

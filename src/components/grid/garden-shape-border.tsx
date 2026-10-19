@@ -1,12 +1,12 @@
-import { StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 
 import { GardenPalette, Radius } from '@/constants/theme';
 import { GARDEN_SLOT_GAP } from '@/utils/garden';
 
 /** Visible brown margin outside a plot that has no neighbor. */
-export const GARDEN_SHAPE_BORDER = 8;
+export const GARDEN_SHAPE_BORDER = Platform.OS === 'web' ? 8 : 3;
 
-const CORNER = Radius.lg;
+const CORNER = Platform.OS === 'web' ? Radius.lg : 8;
 
 type TilePoint = { col: number; row: number };
 
