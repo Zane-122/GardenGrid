@@ -1,13 +1,16 @@
 import * as ImagePicker from 'expo-image-picker';
 import { StatusBar } from 'expo-status-bar';
 import { router, useLocalSearchParams } from 'expo-router';
+import { SymbolView } from 'expo-symbols';
 import { useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { FriendlyButton } from '@/components/app/friendly-button';
 import { GardenFrame } from '@/components/app/garden-frame';
 import { GrowthChart } from '@/components/inventory/growth-chart';
 import { PlantBanner } from '@/components/inventory/plant-banner';
+import { PlantChat } from '@/components/inventory/plant-chat';
+import { PlantTabs, type PlantTab } from '@/components/inventory/plant-tabs';
 import { SoilPanel } from '@/components/inventory/soil-panel';
 import { WateringPanel } from '@/components/inventory/watering-panel';
 import { ThemedText } from '@/components/themed-text';
@@ -86,6 +89,7 @@ export default function PlantDetailScreen() {
   const [updatingPhoto, setUpdatingPhoto] = useState(false);
   const [wateringStatus, setWateringStatus] = useState<PlantWateringStatus | null>(null);
   const [markingWatered, setMarkingWatered] = useState(false);
+  const [tab, setTab] = useState<PlantTab>('details');
 
   useEffect(() => {
     void (async () => {
@@ -206,6 +210,45 @@ export default function PlantDetailScreen() {
     }
   }
 
+  if (tab === 'ai') {
+    return (
+      <ThemedView style={styles.screen}>
+        <StatusBar style="auto" />
+        <KeyboardAvoidingView
+          style={styles.screen}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <View style={styles.chatHeader}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
+              hitSlop={12}
+              onPress={() => router.back()}
+              style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}>
+              <SymbolView
+                tintColor={theme.text}
+                name={{ ios: 'chevron.left', android: 'chevron_left', web: 'chevron_left' }}
+                size={18}
+              />
+            </Pressable>
+            <ThemedText type="smallBold" numberOfLines={1} style={styles.chatTitle}>
+              {name}
+            </ThemedText>
+          </View>
+          <View style={styles.chatTabs}>
+            <PlantTabs value={tab} onChange={setTab} />
+          </View>
+          {plant ? (
+            <PlantChat plantId={plant.id} />
+          ) : (
+            <ThemedText themeColor="textSecondary" style={styles.chatTabs}>
+              {error ?? 'Loading…'}
+            </ThemedText>
+          )}
+        </KeyboardAvoidingView>
+      </ThemedView>
+    );
+  }
+
   return (
     <ThemedView style={styles.screen}>
       <StatusBar style="light" />
@@ -222,6 +265,7 @@ export default function PlantDetailScreen() {
         />
 
         <View style={[styles.pageBody, { backgroundColor: theme.background }]}>
+          <PlantTabs value={tab} onChange={setTab} />
           <GardenFrame variant="bed">
             <GrowthChart params={growthParams} createdAt={plant?.created_at} ageAnchor={observation?.ageAnchor ?? null} />
           </GardenFrame>
@@ -358,6 +402,28 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.five,
     paddingBottom: Spacing.five,
     gap: Spacing.three,
+  },
+  chatHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.three,
+    paddingBottom: Spacing.two,
+  },
+  backButton: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chatTitle: {
+    flex: 1,
+    minWidth: 0,
+  },
+  chatTabs: {
+    paddingHorizontal: Spacing.three,
+    paddingBottom: Spacing.two,
   },
   wateringStatus: {
     marginTop: Spacing.three,
