@@ -3,6 +3,22 @@ import { supabase } from '@/utils/supabase';
 
 const SHOP_ITEMS_BUCKET = 'shop-items';
 
+/** Decoration art bundled with the app, keyed by shop_items.image_path. Edit the files in assets/images/decoritems. */
+const BUNDLED_ITEM_IMAGES: Record<string, number> = {
+  'stone-path.jpg': require('@/assets/images/decoritems/stone-path.jpg'),
+  'bench.png': require('@/assets/images/decoritems/bench.png'),
+  'light.png': require('@/assets/images/decoritems/light.png'),
+  'crate.png': require('@/assets/images/decoritems/crate.png'),
+  'barrel.png': require('@/assets/images/decoritems/barrel.png'),
+  'sign.png': require('@/assets/images/decoritems/sign.png'),
+  'redflower.png': require('@/assets/images/decoritems/redflower.png'),
+  'blueflower.png': require('@/assets/images/decoritems/blueflower.png'),
+  'fireplace.png': require('@/assets/images/decoritems/fireplace.png'),
+  'fountain.png': require('@/assets/images/decoritems/fountain.png'),
+};
+
+export type ShopItemImage = number | { uri: string };
+
 export type ShopItem = {
   id: string;
   slug: string;
@@ -30,6 +46,16 @@ export type OwnedShopItem = {
   footprint_rows: number;
   rotation: ItemRotation;
 };
+
+/** Everything except the paving stone stands on a stone ground tile as free-standing art. */
+export function isStandingItem(slug: string) {
+  return slug !== 'stone-path';
+}
+
+/** Items that open a pool of light in the evening shade. */
+export function isLightSource(slug: string) {
+  return slug === 'light' || slug === 'fireplace';
+}
 
 export function itemSpan(item: {
   footprint_cols: number;
@@ -71,12 +97,16 @@ export function itemCovers(item: OwnedShopItem, col: number, row: number) {
   );
 }
 
-export function shopItemImageUrl(imagePath: string) {
+export function shopItemImageUrl(imagePath: string): ShopItemImage | null {
+  const bundled = BUNDLED_ITEM_IMAGES[imagePath];
+  if (bundled != null) {
+    return bundled;
+  }
   const base = process.env.EXPO_PUBLIC_SUPABASE_URL;
   if (!base) {
     return null;
   }
-  return `${base}/storage/v1/object/public/${SHOP_ITEMS_BUCKET}/${imagePath}`;
+  return { uri: `${base}/storage/v1/object/public/${SHOP_ITEMS_BUCKET}/${imagePath}` };
 }
 
 export async function listShopItems() {

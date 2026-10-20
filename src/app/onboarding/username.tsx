@@ -60,8 +60,7 @@ export default function OnboardingUsernameScreen() {
         error={error}
       />
       <ThemedText type="small" themeColor="textSecondary">
-        For testing, try `{TAKEN_USERNAMES[0]}` — that name is already taken. Other reserved names
-        include {TAKEN_USERNAMES.slice(1, 4).join(', ')}.
+        Pick something that represents you!
       </ThemedText>
     </OnboardingShell>
   );

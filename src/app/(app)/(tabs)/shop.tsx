@@ -27,7 +27,7 @@ import {
   type GardenTile,
 } from '@/utils/garden';
 import { listUserPlants, plantDisplayName, type InventoryPlant } from '@/utils/plants';
-import { buyShopItem, listShopItems, shopItemImageUrl, type ShopItem } from '@/utils/shop-items';
+import { buyShopItem, listShopItems, isStandingItem, shopItemImageUrl, type ShopItem } from '@/utils/shop-items';
 
 function errorText(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
@@ -180,12 +180,12 @@ export default function ShopScreen() {
           catalog.map((item) => {
             const imageUrl = shopItemImageUrl(item.image_path);
             const wide = item.footprint_cols * item.footprint_rows > 1;
-            const lamp = item.slug === 'light';
+            const lamp = isStandingItem(item.slug);
             return (
               <GardenFrame key={item.id} contentStyle={styles.itemOffer}>
                 {imageUrl ? (
                   <Image
-                    source={{ uri: imageUrl }}
+                    source={imageUrl}
                     style={[
                       styles.itemImage,
                       wide ? styles.itemImageWide : null,
@@ -451,7 +451,7 @@ function PlotPicker({
                                   </ThemedText>
                                 ) : (
                                   <Image
-                                    source={require('@/assets/images/soil_tile.png')}
+                                    source={require('@/assets/images/decoritems/soil_tile.png')}
                                     style={styles.slotSoil}
                                     contentFit="cover"
                                     pointerEvents="none"

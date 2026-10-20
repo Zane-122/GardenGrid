@@ -1,11 +1,8 @@
 import { Image, StyleSheet, View } from "react-native";
 
-import { GardenPalette } from "@/constants/theme";
+const GRASS = require("@/assets/images/decoritems/grass.jpg") as number;
 
-const TEXTURE_OPACITY = 0.22;
-const GRASS = require("@/assets/images/grass_tile_3.jpg") as number;
-
-/** Fills its parent with solid grass green plus the seamless grass pattern faintly on top. */
+/** Fills its parent with the seamless grass pattern, tiled. */
 export function GrassBackground() {
   return (
     <View pointerEvents="none" style={styles.root}>
@@ -34,15 +31,12 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     overflow: "hidden",
-    backgroundColor: GardenPalette.grass,
   },
   fill: {
     width: "100%",
     height: "100%",
-    opacity: TEXTURE_OPACITY,
   },
   texture: {
-    opacity: TEXTURE_OPACITY,
-    backgroundColor: GardenPalette.grass,
+    backgroundColor: "transparent",
   },
 });

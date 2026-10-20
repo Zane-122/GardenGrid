@@ -11,7 +11,7 @@ import Svg, { Defs, G, Image as SvgImage, Mask, Rect } from "react-native-svg";
 
 import { GARDEN_SLOT_GAP } from "@/utils/garden";
 
-const LAMP_MASK = require("../../../assets/images/lamp-mask.png");
+const LAMP_MASK = require("../../../assets/images/decoritems/lamp-mask.png");
 /** Extra shade around the screen so a pan can move the cached mask instead of redrawing it. */
 const SHADE_MARGIN = 360;
 const SHADE_DRAW_SCALE = 1;

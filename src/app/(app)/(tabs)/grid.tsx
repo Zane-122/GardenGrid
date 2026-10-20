@@ -53,7 +53,10 @@ import {
   listOwnedShopItems,
   placeOwnedShopItem,
   rotateOwnedShopItem,
+  isLightSource,
+  isStandingItem,
   shopItemImageUrl,
+  type ShopItemImage,
   type OwnedShopItem,
 } from "@/utils/shop-items";
 import { listLatestWateringDates, plantWateringSchedule } from "@/utils/watering";
@@ -249,7 +252,8 @@ export default function GridScreen() {
   const userMovedCamera = useRef(false);
   const panTouch = useRef({ x: 0, y: 0, onItem: false });
   const panOrigin = useRef({ x: 0, y: 0 });
-  const pinchStart = useRef({ scale: 1, x: 0, y: 0, fx: 0, fy: 0 });
+  const pinchStart = useRef({ scale: 1, x: 0, y: 0, fx: 0, fy: 0, distance: 1 });
+  const pinching = useRef(false);
   const stopTracking = useRef<(() => void) | null>(null);
   const trayFrame = useRef<Frame | null>(null);
   const dragRef = useRef<DragState | null>(null);
@@ -335,7 +339,10 @@ export default function GridScreen() {
   useEffect(() => {
     const urls = [
       ...plants.map((plant) => plantImageUrl(plant)),
-      ...ownedItems.map((item) => shopItemImageUrl(item.image_path)),
+      ...ownedItems.map((item) => {
+        const image = shopItemImageUrl(item.image_path);
+        return typeof image === "object" && image ? image.uri : null;
+      }),
     ].filter((url): url is string => Boolean(url));
     if (urls.length > 0) {
       void Image.prefetch(urls, "memory-disk");
@@ -438,58 +445,62 @@ export default function GridScreen() {
     zoomAt,
   };
 
-  const mapGesture = useMemo(() => {
-    const pinch = Gesture.Pinch()
-      .runOnJS(true)
-      .onStart((event) => {
-        userMovedCamera.current = true;
-        pinchStart.current = {
-          scale: scaleRef.current,
-          x: translateRef.current.x,
-          y: translateRef.current.y,
-          fx: event.focalX,
-          fy: event.focalY,
-        };
-      })
-      .onUpdate((event) => {
-        const viewport = viewportWindow.current;
-        const start = pinchStart.current;
-        if (!viewport || start.scale === 0) {
-          return;
-        }
-        const nextScale = clampZoom(start.scale * event.scale);
-        const boardX = (start.fx - viewport.x - start.x) / start.scale;
-        const boardY = (start.fy - viewport.y - start.y) / start.scale;
-        const px = event.focalX - viewport.x;
-        const py = event.focalY - viewport.y;
-        cameraApi.current.apply(nextScale, px - boardX * nextScale, py - boardY * nextScale);
-      })
-      .onEnd(() => {
-        cameraApi.current.publish();
-      });
-
-    return pinch;
-  }, []);
-
   const gardenPan = useMemo(
     () =>
       PanResponder.create({
         onMoveShouldSetPanResponderCapture: (event, gesture) => {
-          if (dragRef.current || event.nativeEvent.touches.length !== 1) {
+          if (dragRef.current) {
             return false;
+          }
+          if (event.nativeEvent.touches.length >= 2) {
+            return true;
           }
           return gesture.dx * gesture.dx + gesture.dy * gesture.dy > 36;
         },
+        onPanResponderTerminationRequest: () => false,
         onPanResponderGrant: (_event, gesture) => {
           userMovedCamera.current = true;
+          pinching.current = false;
           panOrigin.current = {
             x: translateRef.current.x - gesture.dx,
             y: translateRef.current.y - gesture.dy,
           };
         },
-        onPanResponderMove: (_event, gesture) => {
+        onPanResponderMove: (event, gesture) => {
           if (dragRef.current) {
             return;
+          }
+          const touches = event.nativeEvent.touches;
+          const viewport = viewportWindow.current;
+          if (touches.length >= 2 && viewport) {
+            const [a, b] = touches;
+            const distance = Math.hypot(a.pageX - b.pageX, a.pageY - b.pageY);
+            const fx = (a.pageX + b.pageX) / 2 - viewport.x;
+            const fy = (a.pageY + b.pageY) / 2 - viewport.y;
+            if (!pinching.current) {
+              pinching.current = true;
+              pinchStart.current = {
+                scale: scaleRef.current,
+                x: translateRef.current.x,
+                y: translateRef.current.y,
+                fx,
+                fy,
+                distance: Math.max(distance, 1),
+              };
+            }
+            const start = pinchStart.current;
+            const nextScale = clampZoom(start.scale * (distance / start.distance));
+            const boardX = (start.fx - start.x) / start.scale;
+            const boardY = (start.fy - start.y) / start.scale;
+            cameraApi.current.apply(nextScale, fx - boardX * nextScale, fy - boardY * nextScale);
+            return;
+          }
+          if (pinching.current) {
+            pinching.current = false;
+            panOrigin.current = {
+              x: translateRef.current.x - gesture.dx,
+              y: translateRef.current.y - gesture.dy,
+            };
           }
           cameraApi.current.apply(
             scaleRef.current,
@@ -498,9 +509,11 @@ export default function GridScreen() {
           );
         },
         onPanResponderRelease: () => {
+          pinching.current = false;
           cameraApi.current.publish();
         },
         onPanResponderTerminate: () => {
+          pinching.current = false;
           cameraApi.current.publish();
         },
       }),
@@ -1069,7 +1082,7 @@ export default function GridScreen() {
   const draggingItem = drag?.kind === "item" ? ownedItems.find((item) => item.id === drag.id) : undefined;
   const lightIndex = useGardenLightIndex();
   const placedLights = ownedItems.flatMap((item) => {
-    if (item.slug !== "light" || item.col == null || item.row == null) {
+    if (!isLightSource(item.slug) || item.col == null || item.row == null) {
       return [];
     }
     if (drag?.kind === "item" && drag.id === item.id) {
@@ -1132,7 +1145,6 @@ export default function GridScreen() {
               <GardenGrass width={grassW} height={grassH} />
             </Animated.View>
             <View pointerEvents="box-none" style={styles.cameraHost}>
-            <GestureDetector gesture={mapGesture}>
             <Animated.View style={[styles.camera, cameraStyle]}>
               <View style={styles.frameOuter}>
                 <View style={[styles.frameInner, { padding: framePad + GARDEN_SHAPE_BORDER }]}>
@@ -1234,10 +1246,11 @@ export default function GridScreen() {
                                   pathUrl={
                                     laid && laidSingle ? shopItemImageUrl(laid.image_path) : null
                                   }
-                                  imageFit={laid?.slug === "light" ? "contain" : "cover"}
+                                  imageFit={laid && isStandingItem(laid.slug) ? "contain" : "cover"}
+                                  lampArt={laid?.slug === "light"}
                                   stoneGround={Boolean(
                                     laid &&
-                                      (laid.slug === "light" ||
+                                      (isStandingItem(laid.slug) ||
                                         (laidSpan && (laidSpan.cols > 1 || laidSpan.rows > 1))),
                                   )}
                                   onDragStart={startDrag}
@@ -1280,7 +1293,7 @@ export default function GridScreen() {
                             {imageUrl ? (
                               <Image
                                 pointerEvents="none"
-                                source={{ uri: imageUrl }}
+                                source={imageUrl}
                                 contentFit="contain"
                                 priority="high"
                                 cachePolicy="memory-disk"
@@ -1303,7 +1316,6 @@ export default function GridScreen() {
                 </View>
               </View>
             </Animated.View>
-            </GestureDetector>
             </View>
             <GardenLight
               index={lightIndex}
@@ -1451,7 +1463,7 @@ export default function GridScreen() {
                   {ownedItems.length === 0 ? (
                     <View style={styles.emptyNote}>
                       <ThemedText type="small" style={styles.drawerHint}>
-                        Buy a path or a bench from the Shop.
+                        Buy a path or some decorations from the Shop.
                       </ThemedText>
                     </View>
                   ) : (
@@ -1515,7 +1527,7 @@ export default function GridScreen() {
               ]}
             >
               <ThemedText type="smallBold" style={kitFromBottom ? styles.sheetChevron : styles.railChevron}>
-                {kitFromBottom ? (sideOpen ? "⌄" : "⌃") : sideOpen ? "›" : "‹"}
+                {kitFromBottom ? (sideOpen ? "▼" : "▲") : sideOpen ? "›" : "‹"}
               </ThemedText>
               {kitFromBottom ? (
                 <ThemedText type="smallBold" style={styles.sheetLabel}>
@@ -1585,12 +1597,13 @@ export default function GridScreen() {
               imageUrl={shopItemImageUrl(draggingItem.image_path)}
               rotation={draggingItem.rotation}
               fit={
-                draggingItem.slug === "light" ||
+                isStandingItem(draggingItem.slug) ||
                 draggingItem.footprint_cols * draggingItem.footprint_rows > 1
                   ? "contain"
                   : "cover"
               }
               lamp={draggingItem.slug === "light"}
+              decor={isStandingItem(draggingItem.slug)}
             />
           </View>
         ) : null}
@@ -1627,6 +1640,7 @@ const GardenSlotCell = memo(function GardenSlotCell({
   danger = false,
   pathUrl = null,
   imageFit = "cover",
+  lampArt = false,
   stoneGround = false,
   laidItemId = null,
   sourceDragging = false,
@@ -1658,8 +1672,9 @@ const GardenSlotCell = memo(function GardenSlotCell({
   selected: boolean;
   highlighted: boolean;
   danger?: boolean;
-  pathUrl?: string | null;
+  pathUrl?: ShopItemImage | null;
   imageFit?: "cover" | "contain";
+  lampArt?: boolean;
   stoneGround?: boolean;
   laidItemId?: string | null;
   sourceDragging?: boolean;
@@ -1715,11 +1730,9 @@ const GardenSlotCell = memo(function GardenSlotCell({
       accessibilityLabel={
         plant
           ? plantDisplayName(plant.info)
-          : stoneGround && pathUrl
-            ? "Light"
-            : stoneGround
-              ? "Bench"
-              : pathUrl
+          : stoneGround
+            ? "Garden decoration"
+            : pathUrl
                 ? "Placed tile"
                 : "Empty plot"
       }
@@ -1748,7 +1761,7 @@ const GardenSlotCell = memo(function GardenSlotCell({
     >
       {stoneGround ? (
         <Image
-          source={require("@/assets/images/bench-ground.png")}
+          source={require("@/assets/images/decoritems/bench-ground.png")}
           style={styles.slotSoil}
           contentFit="cover"
           priority="high"
@@ -1759,8 +1772,14 @@ const GardenSlotCell = memo(function GardenSlotCell({
       ) : null}
       {pathUrl && !plant ? (
         <Image
-          source={{ uri: pathUrl }}
-          style={imageFit === "contain" ? styles.slotLamp : styles.slotSoil}
+          source={pathUrl}
+          style={
+            imageFit === "contain"
+              ? lampArt
+                ? styles.slotLamp
+                : styles.slotDecor
+              : styles.slotSoil
+          }
           contentFit={imageFit}
           priority="high"
           cachePolicy="memory-disk"
@@ -1778,7 +1797,7 @@ const GardenSlotCell = memo(function GardenSlotCell({
       ) : stoneGround || pathUrl ? null : (
         <>
           <Image
-            source={require("@/assets/images/soil_tile.png")}
+            source={require("@/assets/images/decoritems/soil_tile.png")}
             style={styles.slotSoil}
             contentFit="cover"
             priority="high"
@@ -1907,18 +1926,20 @@ function OwnedTileFace({
   rotation = 0,
   fit = "cover",
   lamp = false,
+  decor = false,
 }: {
   name: string;
-  imageUrl: string | null;
+  imageUrl: ShopItemImage | null;
   rotation?: number;
   fit?: "cover" | "contain";
   lamp?: boolean;
+  decor?: boolean;
 }) {
   return (
     <View style={styles.ownedTile} pointerEvents="none">
-      {lamp ? (
+      {lamp || decor ? (
         <Image
-          source={require("@/assets/images/bench-ground.png")}
+          source={require("@/assets/images/decoritems/bench-ground.png")}
           style={styles.slotSoil}
           contentFit="cover"
           priority="high"
@@ -1929,13 +1950,15 @@ function OwnedTileFace({
       ) : null}
       {imageUrl ? (
         <Image
-          source={{ uri: imageUrl }}
+          source={imageUrl}
           style={
             lamp
               ? styles.slotLamp
-              : [styles.slotSoil, { transform: [{ rotate: `${rotation}deg` }] }]
+              : decor
+                ? styles.slotDecor
+                : [styles.slotSoil, { transform: [{ rotate: `${rotation}deg` }] }]
           }
-          contentFit={lamp ? "contain" : fit}
+          contentFit={lamp || decor ? "contain" : fit}
           priority="high"
           cachePolicy="memory-disk"
           loading="eager"
@@ -1957,6 +1980,7 @@ const OwnedTile = memo(function OwnedTile({
   rotation = 0,
   fit = "cover",
   lamp = false,
+  decor = false,
   selected = false,
   onPress,
   onHoverIn,
@@ -1966,12 +1990,13 @@ const OwnedTile = memo(function OwnedTile({
   onDragEnd,
 }: {
   name: string;
-  imageUrl: string | null;
+  imageUrl: ShopItemImage | null;
   placed: boolean;
   dragging: boolean;
   rotation?: number;
   fit?: "cover" | "contain";
   lamp?: boolean;
+  decor?: boolean;
   selected?: boolean;
   onPress?: () => void;
   onHoverIn?: () => void;
@@ -2010,7 +2035,14 @@ const OwnedTile = memo(function OwnedTile({
           selected && styles.armedTile,
         ]}
       >
-        <OwnedTileFace name={name} imageUrl={imageUrl} rotation={rotation} fit={fit} lamp={lamp} />
+        <OwnedTileFace
+          name={name}
+          imageUrl={imageUrl}
+          rotation={rotation}
+          fit={fit}
+          lamp={lamp}
+          decor={decor}
+        />
       </Pressable>
     </GestureDetector>
   );
@@ -2052,8 +2084,9 @@ function KitTile({
           imageUrl={shopItemImageUrl(item.image_path)}
           placed={!inKit}
           rotation={item.rotation}
-          fit={wide || item.slug === "light" ? "contain" : "cover"}
+          fit={wide || isStandingItem(item.slug) ? "contain" : "cover"}
           lamp={item.slug === "light"}
+          decor={isStandingItem(item.slug)}
           selected={selected}
           dragging={dragging}
           onPress={onPress}
@@ -2436,6 +2469,14 @@ const styles = StyleSheet.create({
     height: "54%",
     left: "23%",
     top: "23%",
+    zIndex: 1,
+  },
+  slotDecor: {
+    position: "absolute",
+    width: "72%",
+    height: "72%",
+    left: "14%",
+    top: "14%",
     zIndex: 1,
   },
   slotHover: {

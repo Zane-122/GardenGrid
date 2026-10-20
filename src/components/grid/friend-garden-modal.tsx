@@ -20,7 +20,7 @@ import {
   type GardenTile,
 } from "@/utils/garden";
 import { plantImageUrl, type InventoryPlant } from "@/utils/plants";
-import { itemCells, itemSpan, shopItemImageUrl, type OwnedShopItem } from "@/utils/shop-items";
+import { isLightSource, isStandingItem, itemCells, itemSpan, shopItemImageUrl, type OwnedShopItem } from "@/utils/shop-items";
 
 const MIN_ZOOM = 0.45;
 const MAX_ZOOM = 2.75;
@@ -114,7 +114,7 @@ export function FriendGardenModal({ friend, onClose }: FriendGardenModalProps) {
   const placedLights = useMemo(
     () =>
       items.flatMap((item) =>
-        item.slug === "light" && item.col != null && item.row != null
+        isLightSource(item.slug) && item.col != null && item.row != null
           ? [{ id: item.id, col: item.col, row: item.row }]
           : [],
       ),
@@ -128,7 +128,10 @@ export function FriendGardenModal({ friend, onClose }: FriendGardenModalProps) {
   useEffect(() => {
     const urls = [
       ...plants.map((plant) => plantImageUrl(plant)),
-      ...items.map((item) => shopItemImageUrl(item.image_path)),
+      ...items.map((item) => {
+        const image = shopItemImageUrl(item.image_path);
+        return typeof image === "object" && image ? image.uri : null;
+      }),
     ].filter((url): url is string => Boolean(url));
     if (urls.length > 0) {
       void Image.prefetch(urls, "memory-disk");
@@ -305,14 +308,15 @@ export function FriendGardenModal({ friend, onClose }: FriendGardenModalProps) {
                         const span = laid ? itemSpan(laid) : null;
                         const single = span != null && span.cols === 1 && span.rows === 1;
                         const lamp = laid?.slug === "light";
-                        const stone = Boolean(laid && (lamp || (span && (span.cols > 1 || span.rows > 1))));
+                        const standing = Boolean(laid && isStandingItem(laid.slug));
+                        const stone = Boolean(laid && (standing || (span && (span.cols > 1 || span.rows > 1))));
                         const imageUrl = laid && single ? shopItemImageUrl(laid.image_path) : null;
                         return (
                           <View key={plot.id} style={styles.slotWrap}>
                             <View style={styles.slot}>
                               {stone ? (
                                 <Image
-                                  source={require("@/assets/images/bench-ground.png")}
+                                  source={require("@/assets/images/decoritems/bench-ground.png")}
                                   style={styles.fillImage}
                                   contentFit="cover"
                                   priority="high"
@@ -322,9 +326,9 @@ export function FriendGardenModal({ friend, onClose }: FriendGardenModalProps) {
                               ) : null}
                               {imageUrl ? (
                                 <Image
-                                  source={{ uri: imageUrl }}
-                                  style={lamp ? styles.lamp : styles.fillImage}
-                                  contentFit={lamp ? "contain" : "cover"}
+                                  source={imageUrl}
+                                  style={lamp ? styles.lamp : standing ? styles.decor : styles.fillImage}
+                                  contentFit={standing ? "contain" : "cover"}
                                   priority="high"
                                   cachePolicy="memory-disk"
                                   loading="eager"
@@ -334,7 +338,7 @@ export function FriendGardenModal({ friend, onClose }: FriendGardenModalProps) {
                                 <PlantToken plant={plant} labelVisible={false} />
                               ) : stone || imageUrl ? null : (
                                 <Image
-                                  source={require("@/assets/images/soil_tile.png")}
+                                  source={require("@/assets/images/decoritems/soil_tile.png")}
                                   style={styles.fillImage}
                                   contentFit="cover"
                                   priority="high"
@@ -368,7 +372,7 @@ export function FriendGardenModal({ friend, onClose }: FriendGardenModalProps) {
                     <View key={item.id} pointerEvents="none" style={[styles.piece, { left, top, width, height }]}>
                       {imageUrl ? (
                         <Image
-                          source={{ uri: imageUrl }}
+                          source={imageUrl}
                           contentFit="contain"
                           priority="high"
                           cachePolicy="memory-disk"
@@ -490,6 +494,14 @@ const styles = StyleSheet.create({
     height: "54%",
     left: "23%",
     top: "23%",
+    zIndex: 1,
+  },
+  decor: {
+    position: "absolute",
+    width: "72%",
+    height: "72%",
+    left: "14%",
+    top: "14%",
     zIndex: 1,
   },
   piece: {

@@ -326,7 +326,7 @@ export default function CommunityGardenScreen() {
                     height: span.rows * CELL + (span.rows - 1) * GARDEN_SLOT_GAP,
                   },
                 ]}>
-                {uri ? <Image source={{ uri }} style={styles.fill} contentFit="contain" /> : null}
+                {uri ? <Image source={uri} style={styles.fill} contentFit="contain" /> : null}
                 <ThemedText type="small" numberOfLines={1} style={styles.owner}>
                   {item.ownerName}
                 </ThemedText>
@@ -362,7 +362,7 @@ export default function CommunityGardenScreen() {
           }}
           render={(item) => {
             const uri = shopItemImageUrl(item.imagePath);
-            return uri ? <Image source={{ uri }} style={styles.kitImage} contentFit="contain" /> : <ThemedText type="small">{item.name}</ThemedText>;
+            return uri ? <Image source={uri} style={styles.kitImage} contentFit="contain" /> : <ThemedText type="small">{item.name}</ThemedText>;
           }}
         />
       </ScrollView>
