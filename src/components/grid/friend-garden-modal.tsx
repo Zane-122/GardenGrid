@@ -4,12 +4,10 @@ import { Modal, Pressable, StyleSheet, useWindowDimensions, View } from "react-n
 import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
 
 import { GardenGrass } from "@/components/app/grass-background";
-import { GardenLight } from "@/components/grid/garden-light";
 import { GARDEN_SHAPE_BORDER, GardenBed } from "@/components/grid/garden-shape-border";
 import { PlantToken } from "@/components/grid/plant-token";
 import { ThemedText } from "@/components/themed-text";
 import { GardenPalette, Radius, Spacing } from "@/constants/theme";
-import { useGardenLightIndex } from "@/hooks/use-garden-light-index";
 import { listFriendGarden } from "@/utils/friend-garden";
 import {
   GARDEN_SLOT_GAP,
@@ -20,7 +18,7 @@ import {
   type GardenTile,
 } from "@/utils/garden";
 import { plantImageUrl, type InventoryPlant } from "@/utils/plants";
-import { isLightSource, isStandingItem, itemCells, itemSpan, shopItemImageUrl, type OwnedShopItem } from "@/utils/shop-items";
+import { isStandingItem, itemCells, itemSpan, shopItemImageUrl, type OwnedShopItem } from "@/utils/shop-items";
 
 const MIN_ZOOM = 0.45;
 const MAX_ZOOM = 2.75;
@@ -38,13 +36,9 @@ export function FriendGardenModal({ friend, onClose }: FriendGardenModalProps) {
   const [items, setItems] = useState<OwnedShopItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [mapSize, setMapSize] = useState({ width: 0, height: 0 });
-  const lightIndex = useGardenLightIndex();
   const scaleSv = useSharedValue(1);
   const txSv = useSharedValue(0);
   const tySv = useSharedValue(0);
-  const cursorX = useSharedValue(-1000);
-  const cursorY = useSharedValue(-1000);
-  const cursorOn = useSharedValue(0);
   const scaleRef = useRef(1);
   const translateRef = useRef({ x: 0, y: 0 });
   const viewportRef = useRef<View>(null);
@@ -111,15 +105,6 @@ export function FriendGardenModal({ friend, onClose }: FriendGardenModalProps) {
     }
     return map;
   }, [items, tiles]);
-  const placedLights = useMemo(
-    () =>
-      items.flatMap((item) =>
-        isLightSource(item.slug) && item.col != null && item.row != null
-          ? [{ id: item.id, col: item.col, row: item.row }]
-          : [],
-      ),
-    [items],
-  );
 
   const grassPad = Math.ceil(Math.max(windowWidth, windowHeight, 1) / MIN_ZOOM);
   const grassW = boardSize.width + GARDEN_SHAPE_BORDER * 2 + grassPad * 2;
@@ -206,17 +191,6 @@ export function FriendGardenModal({ friend, onClose }: FriendGardenModalProps) {
       originTx = translateRef.current.x;
       originTy = translateRef.current.y;
     };
-    const onCursor = (event: PointerEvent) => {
-      const rect = node.getBoundingClientRect();
-      const x = event.clientX - rect.left;
-      const y = event.clientY - rect.top;
-      const inside = x >= 0 && y >= 0 && x <= rect.width && y <= rect.height;
-      cursorOn.value = inside ? 1 : 0;
-      if (inside) {
-        cursorX.value = x;
-        cursorY.value = y;
-      }
-    };
     const onPointerMove = (event: PointerEvent) => {
       if (!panning) {
         return;
@@ -228,14 +202,11 @@ export function FriendGardenModal({ friend, onClose }: FriendGardenModalProps) {
     };
     node.addEventListener("wheel", onWheel, { passive: false });
     node.addEventListener("pointerdown", onPointerDown);
-    window.addEventListener("pointermove", onCursor);
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp);
     return () => {
       node.removeEventListener("wheel", onWheel);
       node.removeEventListener("pointerdown", onPointerDown);
-      window.removeEventListener("pointermove", onCursor);
-      cursorOn.value = 0;
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
     };
@@ -324,10 +295,10 @@ export function FriendGardenModal({ friend, onClose }: FriendGardenModalProps) {
                                   loading="eager"
                                 />
                               ) : null}
-                              {imageUrl ? (
+                              {imageUrl && !lamp ? (
                                 <Image
                                   source={imageUrl}
-                                  style={lamp ? styles.lamp : standing ? styles.decor : styles.fillImage}
+                                  style={standing ? styles.decor : styles.fillImage}
                                   contentFit={standing ? "contain" : "cover"}
                                   priority="high"
                                   cachePolicy="memory-disk"
@@ -347,6 +318,18 @@ export function FriendGardenModal({ friend, onClose }: FriendGardenModalProps) {
                                 />
                               )}
                             </View>
+                            {imageUrl && lamp && !plant ? (
+                              <View pointerEvents="none" style={styles.streetLamp}>
+                                <Image
+                                  source={imageUrl}
+                                  style={styles.streetLampImage}
+                                  contentFit="contain"
+                                  priority="high"
+                                  cachePolicy="memory-disk"
+                                  loading="eager"
+                                />
+                              </View>
+                            ) : null}
                           </View>
                         );
                       })}
@@ -393,20 +376,6 @@ export function FriendGardenModal({ friend, onClose }: FriendGardenModalProps) {
               </View>
             </View>
           </Animated.View>
-          <GardenLight
-            index={lightIndex}
-            lights={placedLights}
-            cell={boardSize.cell}
-            minCol={bounds.minCol}
-            minRow={bounds.minRow}
-            inset={GARDEN_SHAPE_BORDER}
-            scaleSv={scaleSv}
-            txSv={txSv}
-            tySv={tySv}
-            cursorX={cursorX}
-            cursorY={cursorY}
-            cursorOn={cursorOn}
-          />
         </View>
       </View>
     </Modal>
@@ -488,13 +457,18 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
   },
-  lamp: {
+  streetLamp: {
     position: "absolute",
-    width: "54%",
-    height: "54%",
-    left: "23%",
-    top: "23%",
-    zIndex: 1,
+    left: 0,
+    right: 0,
+    bottom: "8%",
+    height: "200%",
+    alignItems: "center",
+    zIndex: 2,
+  },
+  streetLampImage: {
+    height: "100%",
+    aspectRatio: 49 / 332,
   },
   decor: {
     position: "absolute",

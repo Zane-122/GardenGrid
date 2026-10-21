@@ -52,11 +52,6 @@ export function isStandingItem(slug: string) {
   return slug !== 'stone-path';
 }
 
-/** Items that open a pool of light in the evening shade. */
-export function isLightSource(slug: string) {
-  return slug === 'light' || slug === 'fireplace';
-}
-
 export function itemSpan(item: {
   footprint_cols: number;
   footprint_rows: number;
