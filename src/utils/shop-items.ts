@@ -132,9 +132,21 @@ export async function listShopItems() {
 }
 
 export async function listOwnedShopItems() {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+  if (userError) {
+    throw userError;
+  }
+  if (!user) {
+    throw new Error('You need to be signed in to view your garden');
+  }
+
   const { data, error } = await supabase
     .from('user_shop_items')
     .select('id, user_id, shop_item_id, garden_tile_id, rotation, item:shop_items(slug, name, image_path, footprint_cols, footprint_rows), tile:garden_tiles!user_shop_items_garden_tile_id_fkey(col, row, garden:gardens(kind))')
+    .eq('user_id', user.id)
     .order('created_at', { ascending: true });
 
   if (error) {

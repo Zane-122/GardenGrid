@@ -98,26 +98,28 @@ export async function listFriendGarden(userId: string) {
     };
   }) satisfies InventoryPlant[];
 
-  const items = (itemsResult.data ?? []).map((row) => {
-    const item = Array.isArray(row.item) ? row.item[0] : row.item;
-    const tile = Array.isArray(row.tile) ? row.tile[0] : row.tile;
-    const garden = Array.isArray(tile?.garden) ? tile.garden[0] : tile?.garden;
-    const onPersonalGarden = garden?.kind === "personal";
-    return {
-      id: String(row.id),
-      user_id: String(row.user_id),
-      shop_item_id: String(row.shop_item_id),
-      garden_tile_id: row.garden_tile_id ? String(row.garden_tile_id) : null,
-      col: onPersonalGarden && tile?.col != null ? Number(tile.col) : null,
-      row: onPersonalGarden && tile?.row != null ? Number(tile.row) : null,
-      name: String(item?.name ?? "Item"),
-      slug: String(item?.slug ?? ""),
-      image_path: String(item?.image_path ?? ""),
-      footprint_cols: Number(item?.footprint_cols ?? 1),
-      footprint_rows: Number(item?.footprint_rows ?? 1),
-      rotation: (Number(row.rotation ?? 0) % 360) as ItemRotation,
-    };
-  }) satisfies OwnedShopItem[];
+  const items = (itemsResult.data ?? [])
+    .filter((row) => String(row.user_id) === userId)
+    .map((row) => {
+      const item = Array.isArray(row.item) ? row.item[0] : row.item;
+      const tile = Array.isArray(row.tile) ? row.tile[0] : row.tile;
+      const garden = Array.isArray(tile?.garden) ? tile.garden[0] : tile?.garden;
+      const onPersonalGarden = garden?.kind === "personal";
+      return {
+        id: String(row.id),
+        user_id: String(row.user_id),
+        shop_item_id: String(row.shop_item_id),
+        garden_tile_id: row.garden_tile_id ? String(row.garden_tile_id) : null,
+        col: onPersonalGarden && tile?.col != null ? Number(tile.col) : null,
+        row: onPersonalGarden && tile?.row != null ? Number(tile.row) : null,
+        name: String(item?.name ?? "Item"),
+        slug: String(item?.slug ?? ""),
+        image_path: String(item?.image_path ?? ""),
+        footprint_cols: Number(item?.footprint_cols ?? 1),
+        footprint_rows: Number(item?.footprint_rows ?? 1),
+        rotation: (Number(row.rotation ?? 0) % 360) as ItemRotation,
+      };
+    }) satisfies OwnedShopItem[];
 
   return { tiles, slots, plants, items };
 }
