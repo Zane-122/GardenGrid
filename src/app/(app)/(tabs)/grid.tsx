@@ -13,8 +13,8 @@ import { Gesture, GestureDetector, ScrollView } from "react-native-gesture-handl
 import Animated, { useAnimatedStyle, useSharedValue, withTiming, runOnJS } from "react-native-reanimated";
 
 import { GardenGrass } from "@/components/app/grass-background";
-import { GardenLight } from "@/components/grid/garden-light";
 import { GARDEN_SHAPE_BORDER, GardenBed } from "@/components/grid/garden-shape-border";
+import { KitStack, OwnedTileFace } from "@/components/grid/kit-tile";
 import { PlantToken } from "@/components/grid/plant-token";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
@@ -24,7 +24,6 @@ import {
   Spacing,
 } from "@/constants/theme";
 import { useAuth } from "@/context/auth";
-import { useGardenLightIndex } from "@/hooks/use-garden-light-index";
 import { useTweenedNumber } from "@/hooks/use-tweened-number";
 import {
   assignPlantToSlot,
@@ -53,7 +52,6 @@ import {
   listOwnedShopItems,
   placeOwnedShopItem,
   rotateOwnedShopItem,
-  isLightSource,
   isStandingItem,
   shopItemImageUrl,
   type ShopItemImage,
@@ -176,9 +174,6 @@ export default function GridScreen() {
   const scaleSv = useSharedValue(1);
   const txSv = useSharedValue(0);
   const tySv = useSharedValue(0);
-  const cursorX = useSharedValue(-1000);
-  const cursorY = useSharedValue(-1000);
-  const cursorOn = useSharedValue(0);
   const cameraStyle = useAnimatedStyle(() => ({
     transformOrigin: "left top",
     transform: [
@@ -578,17 +573,6 @@ export default function GridScreen() {
       originTx = translateRef.current.x;
       originTy = translateRef.current.y;
     };
-    const onCursor = (event: PointerEvent) => {
-      const rect = node.getBoundingClientRect();
-      const x = event.clientX - rect.left;
-      const y = event.clientY - rect.top;
-      const inside = x >= 0 && y >= 0 && x <= rect.width && y <= rect.height;
-      cursorOn.value = inside ? 1 : 0;
-      if (inside) {
-        cursorX.value = x;
-        cursorY.value = y;
-      }
-    };
     const onPointerMove = (event: PointerEvent) => {
       if (!panning || dragRef.current) {
         return;
@@ -614,15 +598,12 @@ export default function GridScreen() {
     };
     node.addEventListener("wheel", onWheel, { passive: false });
     node.addEventListener("pointerdown", onPointerDown, true);
-    window.addEventListener("pointermove", onCursor);
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp);
     window.addEventListener("pointercancel", onPointerUp);
     return () => {
       node.removeEventListener("wheel", onWheel);
       node.removeEventListener("pointerdown", onPointerDown, true);
-      window.removeEventListener("pointermove", onCursor);
-      cursorOn.value = 0;
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
       window.removeEventListener("pointercancel", onPointerUp);
@@ -1080,16 +1061,6 @@ export default function GridScreen() {
   }, [ownedItems]);
   const draggingPlant = drag?.kind === "plant" ? plantsById.get(drag.id) : undefined;
   const draggingItem = drag?.kind === "item" ? ownedItems.find((item) => item.id === drag.id) : undefined;
-  const lightIndex = useGardenLightIndex();
-  const placedLights = ownedItems.flatMap((item) => {
-    if (!isLightSource(item.slug) || item.col == null || item.row == null) {
-      return [];
-    }
-    if (drag?.kind === "item" && drag.id === item.id) {
-      return [];
-    }
-    return [{ id: item.id, col: item.col, row: item.row }];
-  });
   return (
     <ThemedView style={styles.root}>
       <View
@@ -1317,20 +1288,6 @@ export default function GridScreen() {
               </View>
             </Animated.View>
             </View>
-            <GardenLight
-              index={lightIndex}
-              lights={placedLights}
-              cell={boardSize.cell}
-              minCol={bounds.minCol}
-              minRow={bounds.minRow}
-              inset={framePad + bedPad + GARDEN_SHAPE_BORDER}
-              scaleSv={scaleSv}
-              txSv={txSv}
-              tySv={tySv}
-              cursorX={cursorX}
-              cursorY={cursorY}
-              cursorOn={cursorOn}
-            />
             </View>
           </View>
 
@@ -1770,16 +1727,10 @@ const GardenSlotCell = memo(function GardenSlotCell({
           pointerEvents="none"
         />
       ) : null}
-      {pathUrl && !plant ? (
+      {pathUrl && !plant && !lampArt ? (
         <Image
           source={pathUrl}
-          style={
-            imageFit === "contain"
-              ? lampArt
-                ? styles.slotLamp
-                : styles.slotDecor
-              : styles.slotSoil
-          }
+          style={imageFit === "contain" ? styles.slotDecor : styles.slotSoil}
           contentFit={imageFit}
           priority="high"
           cachePolicy="memory-disk"
@@ -1833,6 +1784,19 @@ const GardenSlotCell = memo(function GardenSlotCell({
       ) : (
         body
       )}
+      {lampArt && pathUrl && !plant ? (
+        <View pointerEvents="none" style={styles.streetLamp}>
+          <Image
+            source={pathUrl}
+            style={styles.streetLampImage}
+            contentFit="contain"
+            priority="high"
+            cachePolicy="memory-disk"
+            loading="eager"
+            pointerEvents="none"
+          />
+        </View>
+      ) : null}
       {Platform.OS === "web" && reveal && showTurn ? (
         <Pressable
           accessibilityRole="button"
@@ -1919,58 +1883,6 @@ const InventoryItem = memo(function InventoryItem({
     </GestureDetector>
   );
 });
-
-function OwnedTileFace({
-  name,
-  imageUrl,
-  rotation = 0,
-  fit = "cover",
-  lamp = false,
-  decor = false,
-}: {
-  name: string;
-  imageUrl: ShopItemImage | null;
-  rotation?: number;
-  fit?: "cover" | "contain";
-  lamp?: boolean;
-  decor?: boolean;
-}) {
-  return (
-    <View style={styles.ownedTile} pointerEvents="none">
-      {lamp || decor ? (
-        <Image
-          source={require("@/assets/images/decoritems/bench-ground.png")}
-          style={styles.slotSoil}
-          contentFit="cover"
-          priority="high"
-          cachePolicy="memory-disk"
-          loading="eager"
-          pointerEvents="none"
-        />
-      ) : null}
-      {imageUrl ? (
-        <Image
-          source={imageUrl}
-          style={
-            lamp
-              ? styles.slotLamp
-              : decor
-                ? styles.slotDecor
-                : [styles.slotSoil, { transform: [{ rotate: `${rotation}deg` }] }]
-          }
-          contentFit={lamp || decor ? "contain" : fit}
-          priority="high"
-          cachePolicy="memory-disk"
-          loading="eager"
-          pointerEvents="none"
-        />
-      ) : null}
-      <ThemedText type="smallBold" numberOfLines={1} style={styles.ownedTileLabel}>
-        {name}
-      </ThemedText>
-    </View>
-  );
-}
 
 const OwnedTile = memo(function OwnedTile({
   name,
@@ -2075,50 +1987,43 @@ function KitTile({
   const inKit = item.garden_tile_id == null;
 
   return (
-    <View style={styles.tileStack}>
-      <View style={styles.stackWrap}>
-        {count > 2 ? <View style={[styles.stackCard, styles.stackCardFar]} /> : null}
-        {count > 1 ? <View style={[styles.stackCard, styles.stackCardNear]} /> : null}
-        <OwnedTile
-          name={item.name}
-          imageUrl={shopItemImageUrl(item.image_path)}
-          placed={!inKit}
-          rotation={item.rotation}
-          fit={wide || isStandingItem(item.slug) ? "contain" : "cover"}
-          lamp={item.slug === "light"}
-          decor={isStandingItem(item.slug)}
-          selected={selected}
-          dragging={dragging}
-          onPress={onPress}
-          onHoverIn={show}
-          onHoverOut={hide}
-          onDragStart={onDragStart}
-          onDragMove={onDragMove}
-          onDragEnd={onDragEnd}
-        />
-        {count > 1 ? (
-          <View style={styles.stackBadge} pointerEvents="none">
-            <ThemedText type="smallBold" style={styles.stackBadgeText}>
-              {count}
+    <KitStack
+      count={count}
+      below={
+        wide && inKit && reveal ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Turn ${item.name}`}
+            onHoverIn={show}
+            onHoverOut={hide}
+            onPress={onTurn}
+            style={styles.turnButton}
+          >
+            <ThemedText type="smallBold" style={styles.turnChipText}>
+              Turn
             </ThemedText>
-          </View>
-        ) : null}
-      </View>
-      {wide && inKit && reveal ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Turn ${item.name}`}
-          onHoverIn={show}
-          onHoverOut={hide}
-          onPress={onTurn}
-          style={styles.turnButton}
-        >
-          <ThemedText type="smallBold" style={styles.turnChipText}>
-            Turn
-          </ThemedText>
-        </Pressable>
-      ) : null}
-    </View>
+          </Pressable>
+        ) : null
+      }
+    >
+      <OwnedTile
+        name={item.name}
+        imageUrl={shopItemImageUrl(item.image_path)}
+        placed={!inKit}
+        rotation={item.rotation}
+        fit={wide || isStandingItem(item.slug) ? "contain" : "cover"}
+        lamp={item.slug === "light"}
+        decor={isStandingItem(item.slug)}
+        selected={selected}
+        dragging={dragging}
+        onPress={onPress}
+        onHoverIn={show}
+        onHoverOut={hide}
+        onDragStart={onDragStart}
+        onDragMove={onDragMove}
+        onDragEnd={onDragEnd}
+      />
+    </KitStack>
   );
 }
 
@@ -2355,47 +2260,6 @@ const styles = StyleSheet.create({
     position: "absolute",
     zIndex: 2,
   },
-  tileStack: {
-    alignItems: "center",
-    gap: Spacing.one,
-    paddingTop: 8,
-  },
-  stackWrap: {
-    width: 72,
-    height: 72,
-  },
-  stackCard: {
-    position: "absolute",
-    width: 72,
-    height: 72,
-    borderRadius: Radius.sm,
-    backgroundColor: GardenPalette.woodOuter,
-    borderWidth: 1,
-    borderColor: GardenPalette.panelBorder,
-  },
-  stackCardNear: {
-    top: -4,
-    left: 4,
-  },
-  stackCardFar: {
-    top: -8,
-    left: 8,
-  },
-  stackBadge: {
-    position: "absolute",
-    top: -6,
-    right: -6,
-    minWidth: 22,
-    height: 22,
-    paddingHorizontal: 5,
-    borderRadius: Radius.pill,
-    backgroundColor: GardenPalette.bar,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  stackBadgeText: {
-    color: GardenPalette.barText,
-  },
   tileHeaderActions: {
     flexDirection: "row",
     alignItems: "center",
@@ -2463,13 +2327,19 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
   },
-  slotLamp: {
+  /** Street lamp: base near the tile's bottom edge, standing about two tiles tall. */
+  streetLamp: {
     position: "absolute",
-    width: "54%",
-    height: "54%",
-    left: "23%",
-    top: "23%",
-    zIndex: 1,
+    left: 0,
+    right: 0,
+    bottom: "-35%",
+    height: "200%",
+    alignItems: "center",
+    zIndex: 2,
+  },
+  streetLampImage: {
+    height: "100%",
+    aspectRatio: 49 / 332,
   },
   slotDecor: {
     position: "absolute",
@@ -2497,20 +2367,6 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: GardenPalette.highlight,
     borderRadius: Radius.sm,
-  },
-  ownedTile: {
-    width: 72,
-    height: 72,
-    borderRadius: Radius.sm,
-    overflow: "hidden",
-    backgroundColor: GardenPalette.plot,
-    justifyContent: "flex-end",
-  },
-  ownedTileLabel: {
-    color: "#FFFFFF",
-    backgroundColor: "rgba(0, 0, 0, 0.45)",
-    paddingHorizontal: Spacing.one,
-    paddingVertical: Spacing.half,
   },
   placedTile: {
     opacity: 0.72,
