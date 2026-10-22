@@ -14,6 +14,7 @@ import Animated, { useAnimatedStyle, useSharedValue, withTiming, runOnJS } from 
 
 import { GardenGrass } from "@/components/app/grass-background";
 import { GARDEN_SHAPE_BORDER, GardenBed } from "@/components/grid/garden-shape-border";
+import { KitStack, OwnedTileFace } from "@/components/grid/kit-tile";
 import { PlantToken } from "@/components/grid/plant-token";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
@@ -1883,58 +1884,6 @@ const InventoryItem = memo(function InventoryItem({
   );
 });
 
-function OwnedTileFace({
-  name,
-  imageUrl,
-  rotation = 0,
-  fit = "cover",
-  lamp = false,
-  decor = false,
-}: {
-  name: string;
-  imageUrl: ShopItemImage | null;
-  rotation?: number;
-  fit?: "cover" | "contain";
-  lamp?: boolean;
-  decor?: boolean;
-}) {
-  return (
-    <View style={styles.ownedTile} pointerEvents="none">
-      {lamp || decor ? (
-        <Image
-          source={require("@/assets/images/decoritems/bench-ground.png")}
-          style={styles.slotSoil}
-          contentFit="cover"
-          priority="high"
-          cachePolicy="memory-disk"
-          loading="eager"
-          pointerEvents="none"
-        />
-      ) : null}
-      {imageUrl ? (
-        <Image
-          source={imageUrl}
-          style={
-            lamp
-              ? styles.slotLamp
-              : decor
-                ? styles.slotDecor
-                : [styles.slotSoil, { transform: [{ rotate: `${rotation}deg` }] }]
-          }
-          contentFit={lamp || decor ? "contain" : fit}
-          priority="high"
-          cachePolicy="memory-disk"
-          loading="eager"
-          pointerEvents="none"
-        />
-      ) : null}
-      <ThemedText type="smallBold" numberOfLines={1} style={styles.ownedTileLabel}>
-        {name}
-      </ThemedText>
-    </View>
-  );
-}
-
 const OwnedTile = memo(function OwnedTile({
   name,
   imageUrl,
@@ -2038,50 +1987,43 @@ function KitTile({
   const inKit = item.garden_tile_id == null;
 
   return (
-    <View style={styles.tileStack}>
-      <View style={styles.stackWrap}>
-        {count > 2 ? <View style={[styles.stackCard, styles.stackCardFar]} /> : null}
-        {count > 1 ? <View style={[styles.stackCard, styles.stackCardNear]} /> : null}
-        <OwnedTile
-          name={item.name}
-          imageUrl={shopItemImageUrl(item.image_path)}
-          placed={!inKit}
-          rotation={item.rotation}
-          fit={wide || isStandingItem(item.slug) ? "contain" : "cover"}
-          lamp={item.slug === "light"}
-          decor={isStandingItem(item.slug)}
-          selected={selected}
-          dragging={dragging}
-          onPress={onPress}
-          onHoverIn={show}
-          onHoverOut={hide}
-          onDragStart={onDragStart}
-          onDragMove={onDragMove}
-          onDragEnd={onDragEnd}
-        />
-        {count > 1 ? (
-          <View style={styles.stackBadge} pointerEvents="none">
-            <ThemedText type="smallBold" style={styles.stackBadgeText}>
-              {count}
+    <KitStack
+      count={count}
+      below={
+        wide && inKit && reveal ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Turn ${item.name}`}
+            onHoverIn={show}
+            onHoverOut={hide}
+            onPress={onTurn}
+            style={styles.turnButton}
+          >
+            <ThemedText type="smallBold" style={styles.turnChipText}>
+              Turn
             </ThemedText>
-          </View>
-        ) : null}
-      </View>
-      {wide && inKit && reveal ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Turn ${item.name}`}
-          onHoverIn={show}
-          onHoverOut={hide}
-          onPress={onTurn}
-          style={styles.turnButton}
-        >
-          <ThemedText type="smallBold" style={styles.turnChipText}>
-            Turn
-          </ThemedText>
-        </Pressable>
-      ) : null}
-    </View>
+          </Pressable>
+        ) : null
+      }
+    >
+      <OwnedTile
+        name={item.name}
+        imageUrl={shopItemImageUrl(item.image_path)}
+        placed={!inKit}
+        rotation={item.rotation}
+        fit={wide || isStandingItem(item.slug) ? "contain" : "cover"}
+        lamp={item.slug === "light"}
+        decor={isStandingItem(item.slug)}
+        selected={selected}
+        dragging={dragging}
+        onPress={onPress}
+        onHoverIn={show}
+        onHoverOut={hide}
+        onDragStart={onDragStart}
+        onDragMove={onDragMove}
+        onDragEnd={onDragEnd}
+      />
+    </KitStack>
   );
 }
 
@@ -2318,47 +2260,6 @@ const styles = StyleSheet.create({
     position: "absolute",
     zIndex: 2,
   },
-  tileStack: {
-    alignItems: "center",
-    gap: Spacing.one,
-    paddingTop: 8,
-  },
-  stackWrap: {
-    width: 72,
-    height: 72,
-  },
-  stackCard: {
-    position: "absolute",
-    width: 72,
-    height: 72,
-    borderRadius: Radius.sm,
-    backgroundColor: GardenPalette.woodOuter,
-    borderWidth: 1,
-    borderColor: GardenPalette.panelBorder,
-  },
-  stackCardNear: {
-    top: -4,
-    left: 4,
-  },
-  stackCardFar: {
-    top: -8,
-    left: 8,
-  },
-  stackBadge: {
-    position: "absolute",
-    top: -6,
-    right: -6,
-    minWidth: 22,
-    height: 22,
-    paddingHorizontal: 5,
-    borderRadius: Radius.pill,
-    backgroundColor: GardenPalette.bar,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  stackBadgeText: {
-    color: GardenPalette.barText,
-  },
   tileHeaderActions: {
     flexDirection: "row",
     alignItems: "center",
@@ -2426,14 +2327,6 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
   },
-  slotLamp: {
-    position: "absolute",
-    top: "4%",
-    bottom: "4%",
-    left: 0,
-    right: 0,
-    zIndex: 1,
-  },
   /** Street lamp: base near the tile's bottom edge, standing about two tiles tall. */
   streetLamp: {
     position: "absolute",
@@ -2474,20 +2367,6 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: GardenPalette.highlight,
     borderRadius: Radius.sm,
-  },
-  ownedTile: {
-    width: 72,
-    height: 72,
-    borderRadius: Radius.sm,
-    overflow: "hidden",
-    backgroundColor: GardenPalette.plot,
-    justifyContent: "flex-end",
-  },
-  ownedTileLabel: {
-    color: "#FFFFFF",
-    backgroundColor: "rgba(0, 0, 0, 0.45)",
-    paddingHorizontal: Spacing.one,
-    paddingVertical: Spacing.half,
   },
   placedTile: {
     opacity: 0.72,

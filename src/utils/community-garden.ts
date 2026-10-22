@@ -166,6 +166,28 @@ export async function donateItemToCommunity(itemId: string, communityId: string,
   }
 }
 
+export async function removeItemFromCommunity(itemId: string, communityId: string) {
+  const { error } = await supabase.rpc('remove_item_from_community', {
+    owned_item_id: itemId,
+    target_community: communityId,
+  });
+  if (error) {
+    throw error;
+  }
+}
+
+export async function moveItemInCommunity(itemId: string, communityId: string, col: number, row: number) {
+  const { error } = await supabase.rpc('move_item_in_community', {
+    owned_item_id: itemId,
+    target_community: communityId,
+    target_col: col,
+    target_row: row,
+  });
+  if (error) {
+    throw error;
+  }
+}
+
 export async function placePlantInCommunityGarden(plantId: string, communityId: string, col: number, row: number) {
   const { error } = await supabase.rpc('place_plant_in_community_garden', {
     target_plant_id: plantId,
