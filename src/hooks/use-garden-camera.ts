@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import { Gesture } from "react-native-gesture-handler";
 import {
   PanResponder,
   Platform,
@@ -51,8 +52,13 @@ type GardenCameraOptions = {
   hitsMovable: (x: number, y: number) => boolean;
   isDragging: () => boolean;
   onViewportLayout: (size: { width: number; height: number }) => void;
-  /** Bump this when a modal or screen becomes visible so web pan listeners rebind to the live node. */
+  /** Resets the "user has moved the camera" flag when a modal opens onto a different garden. */
   bindKey?: string | number | null;
+  /**
+   * Modals render outside the app gesture root, so PanResponder never receives the touch.
+   * Use react-native-gesture-handler pan and pinch on those screens instead.
+   */
+  handlerGestures?: boolean;
 };
 
 /**
@@ -68,13 +74,14 @@ export function useGardenCamera({
   isDragging,
   onViewportLayout,
   bindKey = null,
+  handlerGestures = false,
 }: GardenCameraOptions) {
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const scaleSv = useSharedValue(1);
   const txSv = useSharedValue(0);
   const tySv = useSharedValue(0);
 
-  const viewportRef = useRef<View>(null);
+  const hostRef = useRef<View | null>(null);
   const viewportSize = useRef({ width: 0, height: 0 });
   const viewportWindow = useRef<Frame | null>(null);
   const scaleRef = useRef(1);
@@ -84,8 +91,7 @@ export function useGardenCamera({
   const pinchStart = useRef({ scale: 1, x: 0, y: 0, fx: 0, fy: 0, distance: 1 });
   const pinching = useRef(false);
   const frames = useRef<Partial<Record<string, Frame>>>({});
-  /** Counts layouts / bindKey changes so web pan listeners attach to the live viewport node. */
-  const [bindEpoch, setBindEpoch] = useState(0);
+  const unbindWeb = useRef<(() => void) | null>(null);
 
   const boardRef = useRef(board);
   const borderRef = useRef(border);
@@ -259,8 +265,13 @@ export function useGardenCamera({
     [],
   );
 
+  const seenBindKey = useRef(bindKey);
   // Re-center when the board changes size, unless the user has moved the camera and it is still in view.
   useEffect(() => {
+    if (seenBindKey.current !== bindKey) {
+      seenBindKey.current = bindKey;
+      userMovedCamera.current = false;
+    }
     const viewport = viewportSize.current;
     if (viewport.width <= 0 || viewport.height <= 0 || board.width <= 0) {
       return;
@@ -288,32 +299,27 @@ export function useGardenCamera({
     applyCamera(scale, (viewport.width - visualW) / 2, (viewport.height - visualH) / 2);
     publishFrames();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [board.height, board.width]);
+  }, [board.height, board.width, bindKey]);
 
   // Frames also change when plots are added, so republish.
   useEffect(() => {
     publishFrames();
   }, [tiles, bounds.minCol, bounds.minRow]);
 
-  // Friend/community modals mount before their DOM node exists. Rebind when the screen
-  // becomes active or the viewport first gets a real size.
-  useEffect(() => {
-    userMovedCamera.current = false;
-    const frame = requestAnimationFrame(() => {
-      setBindEpoch((current) => current + 1);
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [bindKey]);
-
-  useEffect(() => {
-    if (Platform.OS !== "web" || bindEpoch === 0) {
+  // Modal content mounts a frame after `visible` flips, so an effect that reads the ref
+  // on that first commit finds nothing. Bind when the node itself is attached.
+  const viewportRef = useCallback((node: View | null) => {
+    unbindWeb.current?.();
+    unbindWeb.current = null;
+    hostRef.current = node;
+    if (Platform.OS !== "web" || node == null) {
       return;
     }
-    const node = viewportRef.current as unknown as HTMLElement | null;
-    if (!node || typeof node.addEventListener !== "function") {
+    const element = node as unknown as HTMLElement;
+    if (typeof element.addEventListener !== "function") {
       return;
     }
-    node.style.touchAction = "none";
+    element.style.touchAction = "none";
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
       const factor = event.deltaY < 0 ? 1.08 : 1 / 1.08;
@@ -356,49 +362,87 @@ export function useGardenCamera({
       panning = false;
       api.current.publish();
     };
-    node.addEventListener("wheel", onWheel, { passive: false });
-    node.addEventListener("pointerdown", onPointerDown, true);
+    element.addEventListener("wheel", onWheel, { passive: false });
+    element.addEventListener("pointerdown", onPointerDown, true);
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp);
     window.addEventListener("pointercancel", onPointerUp);
-    return () => {
-      node.removeEventListener("wheel", onWheel);
-      node.removeEventListener("pointerdown", onPointerDown, true);
+    unbindWeb.current = () => {
+      element.removeEventListener("wheel", onWheel);
+      element.removeEventListener("pointerdown", onPointerDown, true);
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
       window.removeEventListener("pointercancel", onPointerUp);
     };
-  }, [bindEpoch]);
+  }, []);
+
+  const gesture = useMemo(() => {
+    const pan = Gesture.Pan()
+      .maxPointers(1)
+      .runOnJS(true)
+      .onBegin(() => {
+        panOrigin.current = { x: translateRef.current.x, y: translateRef.current.y };
+      })
+      .onUpdate((event) => {
+        if (isDraggingRef.current() || event.numberOfPointers > 1 || pinching.current) {
+          return;
+        }
+        const dx = event.translationX;
+        const dy = event.translationY;
+        if (dx * dx + dy * dy < 16) {
+          return;
+        }
+        userMovedCamera.current = true;
+        api.current.apply(scaleRef.current, panOrigin.current.x + dx, panOrigin.current.y + dy);
+      })
+      .onFinalize(() => {
+        api.current.publish();
+      });
+    const pinch = Gesture.Pinch()
+      .runOnJS(true)
+      .onBegin((event) => {
+        userMovedCamera.current = true;
+        pinching.current = true;
+        pinchStart.current = {
+          scale: scaleRef.current,
+          x: translateRef.current.x,
+          y: translateRef.current.y,
+          fx: event.focalX,
+          fy: event.focalY,
+          distance: 1,
+        };
+      })
+      .onUpdate((event) => {
+        const start = pinchStart.current;
+        const nextScale = clampZoom(start.scale * event.scale);
+        const boardX = (start.fx - start.x) / start.scale;
+        const boardY = (start.fy - start.y) / start.scale;
+        api.current.apply(nextScale, event.focalX - boardX * nextScale, event.focalY - boardY * nextScale);
+      })
+      .onFinalize(() => {
+        pinching.current = false;
+        api.current.publish();
+      });
+    return Gesture.Simultaneous(pan, pinch);
+  }, []);
 
   function onLayout(event: LayoutChangeEvent) {
     const { width, height } = event.nativeEvent.layout;
-    const wasEmpty = viewportSize.current.width <= 0 || viewportSize.current.height <= 0;
     viewportSize.current = { width, height };
     onViewportLayout({ width, height });
-    if (width > 0 && height > 0 && wasEmpty) {
-      setBindEpoch((current) => current + 1);
-    }
-    if (!viewportRef.current) {
+    if (!hostRef.current) {
       return;
     }
-    measureView(viewportRef.current, (frame) => {
+    measureView(hostRef.current, (frame) => {
       viewportWindow.current = frame;
-      if (!userMovedCamera.current && boardRef.current.width > 0) {
-        const pad = borderRef.current * 2;
-        applyCamera(
-          1,
-          (width - boardRef.current.width - pad) / 2,
-          (height - boardRef.current.height - pad) / 2,
-        );
-      }
       publishFrames();
     });
   }
 
   /** Re-reads where the viewport is in the window. Call before a drag starts. */
   function remeasure() {
-    if (viewportRef.current) {
-      measureView(viewportRef.current, (frame) => {
+    if (hostRef.current) {
+      measureView(hostRef.current, (frame) => {
         viewportWindow.current = frame;
         publishFrames();
       });
@@ -416,9 +460,11 @@ export function useGardenCamera({
 
   return {
     viewportRef,
+    gesture: handlerGestures && Platform.OS !== "web" ? gesture : null,
     viewportProps: {
       onLayout,
-      ...(Platform.OS === "web" ? {} : panResponder.panHandlers),
+      collapsable: false as const,
+      ...(Platform.OS === "web" || handlerGestures ? {} : panResponder.panHandlers),
     },
     cameraStyle,
     grassStyle,

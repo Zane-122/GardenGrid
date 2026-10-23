@@ -1,6 +1,7 @@
 import { Image } from "expo-image";
 import { useEffect, useMemo, useState } from "react";
 import { Modal, Platform, Pressable, StyleSheet, useWindowDimensions, View, type ViewProps } from "react-native";
+import { GestureDetector, GestureHandlerRootView } from "react-native-gesture-handler";
 import Animated from "react-native-reanimated";
 
 import { GardenGrass } from "@/components/app/grass-background";
@@ -137,13 +138,12 @@ export function FriendGardenModal({ friend, onClose }: FriendGardenModalProps) {
     isDragging: () => false,
     onViewportLayout: setViewport,
     bindKey: friend?.id ?? null,
+    handlerGestures: true,
   });
   const grassW = board.width + GARDEN_SHAPE_BORDER * 2 + camera.grassPad * 2;
   const grassH = board.height + GARDEN_SHAPE_BORDER * 2 + camera.grassPad * 2;
 
-  return (
-    <Modal visible={friend != null} animationType="slide" onRequestClose={onClose}>
-      <View style={styles.screen}>
+  const viewport = (
         <View ref={camera.viewportRef} style={styles.viewport} {...camera.viewportProps}>
           <Animated.View
             pointerEvents="none"
@@ -278,6 +278,12 @@ export function FriendGardenModal({ friend, onClose }: FriendGardenModalProps) {
           </View>
           <GardenLoadingVeil visible={showVeil} columns={viewColumns} rows={viewRows} />
         </View>
+  );
+
+  return (
+    <Modal visible={friend != null} animationType="slide" onRequestClose={onClose}>
+      <GestureHandlerRootView style={styles.screen}>
+        {camera.gesture ? <GestureDetector gesture={camera.gesture}>{viewport}</GestureDetector> : viewport}
         <View pointerEvents="box-none" style={styles.header}>
           <View style={styles.titleBlock}>
             <ThemedText type="heading" style={styles.title}>
@@ -298,7 +304,7 @@ export function FriendGardenModal({ friend, onClose }: FriendGardenModalProps) {
             </ThemedText>
           </Pressable>
         </View>
-      </View>
+      </GestureHandlerRootView>
     </Modal>
   );
 }
@@ -332,6 +338,7 @@ function FriendPlot({
               ? "Placed tile"
               : "Empty plot"
       }
+      pointerEvents={Platform.OS === "web" ? "auto" : "none"}
       style={styles.slotWrap}
       {...(Platform.OS === "web"
         ? ({
