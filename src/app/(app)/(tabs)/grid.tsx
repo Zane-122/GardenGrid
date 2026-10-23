@@ -13,6 +13,7 @@ import { Gesture, GestureDetector, ScrollView } from "react-native-gesture-handl
 import Animated, { useAnimatedStyle, useSharedValue, withTiming, runOnJS } from "react-native-reanimated";
 
 import { GardenGrass } from "@/components/app/grass-background";
+import { GardenLoadingVeil, useGardenLoadGate } from "@/components/grid/garden-loading-veil";
 import { GARDEN_SHAPE_BORDER, GardenBed } from "@/components/grid/garden-shape-border";
 import { KitStack, OwnedTileFace } from "@/components/grid/kit-tile";
 import { PlantToken } from "@/components/grid/plant-token";
@@ -154,7 +155,7 @@ export default function GridScreen() {
   const [tiles, setTiles] = useState<GardenTile[]>([]);
   const [slots, setSlots] = useState<GardenSlot[]>([]);
   const [ownedItems, setOwnedItems] = useState<OwnedShopItem[]>([]);
-  const [, setLoading] = useState(true);
+  const [dataReady, setDataReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedPlantId, setSelectedPlantId] = useState<string | null>(null);
   const [selectedShopItemId, setSelectedShopItemId] = useState<string | null>(null);
@@ -331,18 +332,17 @@ export default function GridScreen() {
   const grassW = boardSize.width + grassFrame + grassPad * 2;
   const grassH = boardSize.height + grassFrame + grassPad * 2;
 
-  useEffect(() => {
-    const urls = [
+  const imageUrls = useMemo(
+    () => [
       ...plants.map((plant) => plantImageUrl(plant)),
       ...ownedItems.map((item) => {
         const image = shopItemImageUrl(item.image_path);
         return typeof image === "object" && image ? image.uri : null;
       }),
-    ].filter((url): url is string => Boolean(url));
-    if (urls.length > 0) {
-      void Image.prefetch(urls, "memory-disk");
-    }
-  }, [ownedItems, plants]);
+    ],
+    [ownedItems, plants],
+  );
+  const showVeil = useGardenLoadGate(dataReady, imageUrls);
 
   function applyCamera(nextScale: number, nextX: number, nextY: number) {
     const viewport = viewportSize.current;
@@ -610,8 +610,11 @@ export default function GridScreen() {
     };
   }, [boardSize.width, boardSize.height]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: { veil?: boolean }) => {
     setError(null);
+    if (opts?.veil !== false) {
+      setDataReady(false);
+    }
     try {
       const [plantsResult, tilesResult, slotsResult, itemsResult] = await Promise.allSettled([
         listUserPlants(),
@@ -653,13 +656,14 @@ export default function GridScreen() {
           : "Could not load your garden",
       );
     } finally {
-      setLoading(false);
+      setDataReady(true);
     }
   }, []);
 
   useFocusEffect(
     useCallback(() => {
-      void load();
+      // Keep the veil for the first paint (dataReady starts false). Later visits refresh quietly.
+      void load({ veil: false });
     }, [load]),
   );
 
@@ -1115,7 +1119,7 @@ export default function GridScreen() {
             >
               <GardenGrass width={grassW} height={grassH} />
             </Animated.View>
-            <View pointerEvents="box-none" style={styles.cameraHost}>
+            <View pointerEvents="box-none" style={[styles.cameraHost, showVeil ? styles.hiddenGarden : null]}>
             <Animated.View style={[styles.camera, cameraStyle]}>
               <View style={styles.frameOuter}>
                 <View style={[styles.frameInner, { padding: framePad + GARDEN_SHAPE_BORDER }]}>
@@ -1187,7 +1191,11 @@ export default function GridScreen() {
                                   highlighted={highlighted}
                                   danger={deleting && eraseCells.has(key)}
                                   sourceDragging={isDragSource}
-                                  dragLocked={drag != null && !isDragSource}
+                                  dragLocked={
+                                    deleting ||
+                                    Boolean(stampItem) ||
+                                    (drag != null && !isDragSource)
+                                  }
                                   onLayoutView={(view) => {
                                     if (!owned) {
                                       return;
@@ -1210,6 +1218,9 @@ export default function GridScreen() {
                                       : undefined
                                   }
                                   onLongPress={() => {
+                                    if (deleting) {
+                                      return;
+                                    }
                                     if (occupant) {
                                       void removeFromSlot(col, row);
                                     }
@@ -1288,6 +1299,11 @@ export default function GridScreen() {
               </View>
             </Animated.View>
             </View>
+            <GardenLoadingVeil
+              visible={showVeil}
+              columns={viewColumns}
+              rows={viewRows}
+            />
             </View>
           </View>
 
@@ -1325,7 +1341,7 @@ export default function GridScreen() {
                 </ThemedText>
                 <ThemedText type="small" style={styles.drawerHint}>
                   {deleting
-                    ? "Tap plots to pick up what's there. Tap Delete again when you are done."
+                    ? "Tap a plant or tile to pick it back up. Tap Delete again when you are done."
                     : selectedShopItemId
                       ? stampItem
                         ? `Tap plots to keep laying ${stampItem.name}. Tap that tile again when you are done.`
@@ -2063,6 +2079,9 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     zIndex: 1,
+  },
+  hiddenGarden: {
+    opacity: 0,
   },
   camera: {
     position: "absolute",

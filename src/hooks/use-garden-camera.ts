@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   PanResponder,
   Platform,
@@ -51,6 +51,8 @@ type GardenCameraOptions = {
   hitsMovable: (x: number, y: number) => boolean;
   isDragging: () => boolean;
   onViewportLayout: (size: { width: number; height: number }) => void;
+  /** Bump this when a modal or screen becomes visible so web pan listeners rebind to the live node. */
+  bindKey?: string | number | null;
 };
 
 /**
@@ -65,6 +67,7 @@ export function useGardenCamera({
   hitsMovable,
   isDragging,
   onViewportLayout,
+  bindKey = null,
 }: GardenCameraOptions) {
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const scaleSv = useSharedValue(1);
@@ -81,6 +84,8 @@ export function useGardenCamera({
   const pinchStart = useRef({ scale: 1, x: 0, y: 0, fx: 0, fy: 0, distance: 1 });
   const pinching = useRef(false);
   const frames = useRef<Partial<Record<string, Frame>>>({});
+  /** Counts layouts / bindKey changes so web pan listeners attach to the live viewport node. */
+  const [bindEpoch, setBindEpoch] = useState(0);
 
   const boardRef = useRef(board);
   const borderRef = useRef(border);
@@ -290,7 +295,20 @@ export function useGardenCamera({
     publishFrames();
   }, [tiles, bounds.minCol, bounds.minRow]);
 
+  // Friend/community modals mount before their DOM node exists. Rebind when the screen
+  // becomes active or the viewport first gets a real size.
   useEffect(() => {
+    userMovedCamera.current = false;
+    const frame = requestAnimationFrame(() => {
+      setBindEpoch((current) => current + 1);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [bindKey]);
+
+  useEffect(() => {
+    if (Platform.OS !== "web" || bindEpoch === 0) {
+      return;
+    }
     const node = viewportRef.current as unknown as HTMLElement | null;
     if (!node || typeof node.addEventListener !== "function") {
       return;
@@ -350,12 +368,16 @@ export function useGardenCamera({
       window.removeEventListener("pointerup", onPointerUp);
       window.removeEventListener("pointercancel", onPointerUp);
     };
-  }, []);
+  }, [bindEpoch]);
 
   function onLayout(event: LayoutChangeEvent) {
     const { width, height } = event.nativeEvent.layout;
+    const wasEmpty = viewportSize.current.width <= 0 || viewportSize.current.height <= 0;
     viewportSize.current = { width, height };
     onViewportLayout({ width, height });
+    if (width > 0 && height > 0 && wasEmpty) {
+      setBindEpoch((current) => current + 1);
+    }
     if (!viewportRef.current) {
       return;
     }

@@ -8,6 +8,7 @@ import Animated from 'react-native-reanimated';
 import { FriendlyButton } from '@/components/app/friendly-button';
 import { GardenFrame } from '@/components/app/garden-frame';
 import { GardenGrass } from '@/components/app/grass-background';
+import { GardenLoadingVeil, useGardenLoadGate } from '@/components/grid/garden-loading-veil';
 import { GARDEN_SHAPE_BORDER, GardenBed } from '@/components/grid/garden-shape-border';
 import { KitStack, OwnedTileFace } from '@/components/grid/kit-tile';
 import { ThemedText } from '@/components/themed-text';
@@ -24,6 +25,7 @@ import {
   moveItemInCommunity,
   placePlantInCommunityGarden,
   removeItemFromCommunity,
+  removePlantFromCommunity,
   type CommunityGarden,
   type CommunityGardenItem,
   type CommunityKitItem,
@@ -34,9 +36,10 @@ import {
   GARDEN_SLOT_GAP,
   gardenBoardSize,
   gardenTilesPrice,
+  gardenViewBounds,
   tileKey,
 } from '@/utils/garden';
-import { formatOxygenMl, getCurrencyBalances } from '@/utils/plants';
+import { formatOxygenMl, formatPollenMg, getCurrencyBalances } from '@/utils/plants';
 import { isStandingItem, itemCells, itemSpan, shopItemImageUrl } from '@/utils/shop-items';
 
 type DragState = { kind: 'plant' | 'item'; id: string; x: number; y: number };
@@ -59,7 +62,7 @@ export default function CommunityGardenScreen() {
   const communityId = Array.isArray(params.id) ? params.id[0] : params.id;
   const [garden, setGarden] = useState<CommunityGarden | null>(null);
   const [balances, setBalances] = useState({ oxygen: 0, pollen: 0 });
-  const [loading, setLoading] = useState(true);
+  const [dataReady, setDataReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [buying, setBuying] = useState(false);
   const [removing, setRemoving] = useState(false);
@@ -84,11 +87,14 @@ export default function CommunityGardenScreen() {
   const kitRef = useRef<View>(null);
   const kitFrame = useRef<Frame | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: { veil?: boolean }) => {
     if (!communityId) {
       return;
     }
     setError(null);
+    if (opts?.veil !== false) {
+      setDataReady(false);
+    }
     try {
       const [nextGarden, nextBalances] = await Promise.all([
         getCommunityGarden(communityId),
@@ -100,13 +106,14 @@ export default function CommunityGardenScreen() {
       console.error('[community-garden] load failed', loadError);
       setError(errorText(loadError, 'Could not open that garden'));
     } finally {
-      setLoading(false);
+      setDataReady(true);
     }
   }, [communityId]);
 
   useFocusEffect(
     useCallback(() => {
-      void load();
+      // First open still veils (dataReady starts false). Returning to the screen refreshes quietly.
+      void load({ veil: false });
     }, [load]),
   );
 
@@ -128,14 +135,30 @@ export default function CommunityGardenScreen() {
     return map;
   }, [garden?.plants]);
 
+  const selectedCells = useMemo(
+    () =>
+      selectedPlots.map((key) => {
+        const [col, row] = key.split(':').map(Number);
+        return { col, row };
+      }),
+    [selectedPlots],
+  );
+
+  /** Owned plots plus ones already picked in this purchase — the buy ring grows from this edge. */
+  const land = useMemo(
+    () => [...(garden?.tiles ?? []), ...selectedCells],
+    [garden?.tiles, selectedCells],
+  );
+
   const candidates = useMemo(() => {
     if (!garden || !buying) {
       return [] as { col: number; row: number }[];
     }
     const owned = new Set(garden.tiles.map((tile) => tileKey(tile.col, tile.row)));
+    const picked = new Set(selectedPlots);
     const extra: { col: number; row: number }[] = [];
     const seen = new Set<string>();
-    for (const tile of garden.tiles) {
+    for (const tile of land) {
       for (const [colOffset, rowOffset] of [
         [0, -1],
         [0, 1],
@@ -145,7 +168,7 @@ export default function CommunityGardenScreen() {
         const col = tile.col + colOffset;
         const row = tile.row + rowOffset;
         const key = tileKey(col, row);
-        if (owned.has(key) || seen.has(key)) {
+        if (owned.has(key) || picked.has(key) || seen.has(key)) {
           continue;
         }
         seen.add(key);
@@ -153,12 +176,16 @@ export default function CommunityGardenScreen() {
       }
     }
     return extra;
-  }, [buying, garden]);
+  }, [buying, garden, land, selectedPlots]);
 
   const cells = useMemo(() => {
     const owned = (garden?.tiles ?? []).map((tile) => ({ ...tile, owned: true as const }));
-    return [...owned, ...candidates.map((tile) => ({ ...tile, id: tileKey(tile.col, tile.row), owned: false as const }))];
-  }, [candidates, garden?.tiles]);
+    const open = [
+      ...selectedCells.map((tile) => ({ ...tile, id: tileKey(tile.col, tile.row), owned: false as const })),
+      ...candidates.map((tile) => ({ ...tile, id: tileKey(tile.col, tile.row), owned: false as const })),
+    ];
+    return [...owned, ...open];
+  }, [candidates, garden?.tiles, selectedCells]);
 
   const bounds = useMemo(() => {
     const cols = cells.map((cell) => cell.col);
@@ -170,19 +197,51 @@ export default function CommunityGardenScreen() {
       maxRow: rows.length ? Math.max(...rows) : 0,
     };
   }, [cells]);
-  const columns = bounds.maxCol - bounds.minCol + 1;
-  const rows = bounds.maxRow - bounds.minRow + 1;
+  const columns = Math.max(1, bounds.maxCol - bounds.minCol + 1);
+  const rows = Math.max(1, bounds.maxRow - bounds.minRow + 1);
 
-  const board = useMemo(() => {
+  /** Fit plot size to the owned garden only, so opening buy mode grows the board instead of shrinking plots. */
+  const ownedFit = useMemo(() => {
+    const ownedBounds = gardenViewBounds(garden?.tiles ?? []);
+    const ownedColumns = Math.max(1, ownedBounds.maxCol - ownedBounds.minCol + 1);
+    const ownedRows = Math.max(1, ownedBounds.maxRow - ownedBounds.minRow + 1);
     const chrome = GARDEN_SHAPE_BORDER * 2;
     return gardenBoardSize(
       Math.max(0, (viewport.width || windowWidth) - chrome),
       Math.max(0, (viewport.height || windowHeight) - chrome),
-      columns,
-      rows,
+      ownedColumns,
+      ownedRows,
     );
-  }, [columns, rows, viewport.height, viewport.width, windowHeight, windowWidth]);
+  }, [garden?.tiles, viewport.height, viewport.width, windowHeight, windowWidth]);
+
+  const board = useMemo(() => {
+    const gapX = GARDEN_SLOT_GAP * Math.max(0, columns - 1);
+    const gapY = GARDEN_SLOT_GAP * Math.max(0, rows - 1);
+    const cell = ownedFit.cell;
+    return {
+      cell,
+      width: cell * columns + gapX,
+      height: cell * rows + gapY,
+    };
+  }, [columns, ownedFit.cell, rows]);
   const stride = board.cell + GARDEN_SLOT_GAP;
+
+  const imageUrls = useMemo(
+    () => [
+      ...(garden?.plants ?? []).map((plant) => plant.photoUrl ?? plant.imageUrl),
+      ...(garden?.items ?? []).map((item) => {
+        const image = shopItemImageUrl(item.imagePath);
+        return typeof image === 'object' && image ? image.uri : null;
+      }),
+      ...(garden?.kitPlants ?? []).map((plant) => plant.photoUrl ?? plant.imageUrl),
+      ...(garden?.kitItems ?? []).map((item) => {
+        const image = shopItemImageUrl(item.imagePath);
+        return typeof image === 'object' && image ? image.uri : null;
+      }),
+    ],
+    [garden],
+  );
+  const showVeil = useGardenLoadGate(dataReady, imageUrls);
 
   const camera = useGardenCamera({
     board,
@@ -226,7 +285,7 @@ export default function CommunityGardenScreen() {
       );
       setSelectedPlots([]);
       setBuying(false);
-      await load();
+      await load({ veil: false });
     } catch (buyError) {
       console.error('[community-garden] buy plots failed', buyError);
       setError(errorText(buyError, 'Could not buy those plots'));
@@ -244,7 +303,7 @@ export default function CommunityGardenScreen() {
     try {
       await placePlantInCommunityGarden(plantId, communityId, col, row);
       setSelectedPlantId(null);
-      await load();
+      await load({ veil: false });
     } catch (placeError) {
       console.error('[community-garden] place plant failed', placeError);
       setError(errorText(placeError, 'Could not add that to the garden'));
@@ -262,7 +321,7 @@ export default function CommunityGardenScreen() {
     try {
       await donateItemToCommunity(itemId, communityId, col, row);
       setSelectedItemId(null);
-      await load();
+      await load({ veil: false });
     } catch (placeError) {
       console.error('[community-garden] give item failed', placeError);
       setError(errorText(placeError, 'Could not add that to the garden'));
@@ -288,7 +347,28 @@ export default function CommunityGardenScreen() {
       console.error('[community-garden] move item failed', { itemId, col, row }, moveError);
       failure = errorText(moveError, 'Could not move that');
     }
-    await load();
+    await load({ veil: false });
+    if (failure) {
+      setError(failure);
+    }
+  }
+
+  async function removePlant(plantId: string) {
+    if (!communityId) {
+      return;
+    }
+    setError(null);
+    setGarden((current) =>
+      current ? { ...current, plants: current.plants.filter((plant) => plant.id !== plantId) } : current,
+    );
+    let failure: string | null = null;
+    try {
+      await removePlantFromCommunity(plantId, communityId);
+    } catch (removeError) {
+      console.error('[community-garden] remove plant failed', { plantId }, removeError);
+      failure = errorText(removeError, 'Could not take that plant back');
+    }
+    await load({ veil: false });
     if (failure) {
       setError(failure);
     }
@@ -309,7 +389,7 @@ export default function CommunityGardenScreen() {
       console.error('[community-garden] remove item failed', { itemId }, removeError);
       failure = errorText(removeError, 'Could not take that back');
     }
-    await load();
+    await load({ veil: false });
     if (failure) {
       setError(failure);
     }
@@ -330,6 +410,11 @@ export default function CommunityGardenScreen() {
     const key = tileKey(col, row);
     const laid = itemAtCell.get(key);
     if (removing) {
+      const plant = plantAt.get(key);
+      if (plant && plant.ownerId === userId) {
+        void removePlant(plant.id);
+        return;
+      }
       if (laid && laid.ownerId === userId) {
         void removeItem(laid.id);
       }
@@ -355,9 +440,21 @@ export default function CommunityGardenScreen() {
       placed: Boolean(placed),
       onKit: Boolean(kitFrame.current && contains(kitFrame.current, x, y)),
     });
+    const onKit = Boolean(kitFrame.current && contains(kitFrame.current, x, y));
+    if (current.kind === 'plant' && onKit) {
+      const planted = gardenRef.current?.plants.some((plant) => plant.id === current.id);
+      if (planted) {
+        void removePlant(current.id);
+      }
+      return;
+    }
     if (key != null) {
       const [col, row] = key.split(':').map(Number);
       if (current.kind === 'plant') {
+        const planted = gardenRef.current?.plants.find((plant) => plant.id === current.id);
+        if (planted && planted.col === col && planted.row === row) {
+          return;
+        }
         void placePlant(current.id, col, row);
       } else if (placed) {
         if (placed.col !== col || placed.row !== row) {
@@ -368,7 +465,7 @@ export default function CommunityGardenScreen() {
       }
       return;
     }
-    if (current.kind === 'item' && placed && kitFrame.current && contains(kitFrame.current, x, y)) {
+    if (current.kind === 'item' && placed && onKit) {
       void removeItem(current.id);
     }
   }
@@ -441,7 +538,10 @@ export default function CommunityGardenScreen() {
   endDragRef.current = endDrag;
 
   const draggingPlant =
-    drag?.kind === 'plant' ? garden?.kitPlants.find((plant) => plant.id === drag.id) : undefined;
+    drag?.kind === 'plant'
+      ? (garden?.kitPlants.find((plant) => plant.id === drag.id) ??
+        garden?.plants.find((plant) => plant.id === drag.id))
+      : undefined;
   const draggingItem =
     drag?.kind === 'item'
       ? (garden?.kitItems.find((item) => item.id === drag.id) ?? garden?.items.find((item) => item.id === drag.id))
@@ -451,10 +551,10 @@ export default function CommunityGardenScreen() {
   const hint = buying
     ? `You have ${Math.round(balances.oxygen).toLocaleString()} oxygen and ${Math.round(balances.pollen).toLocaleString()} pollen.`
     : removing
-      ? 'Tap one of your items to take it back. Items other members gave stay put.'
+      ? 'Tap one of your plants or items to take it back. Things other members gave stay put.'
       : holding
         ? 'Tap an empty plot to give it. A plant can only live in one garden.'
-        : 'Drag a plant or item onto a plot. Drag your own items to move them, or onto the kit to take them back.';
+        : 'Drag a plant or item onto a plot. Drag your own onto the kit to take them back.';
 
   return (
     <ThemedView style={styles.screen}>
@@ -475,9 +575,9 @@ export default function CommunityGardenScreen() {
               {garden?.name ?? 'Community garden'}
             </ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
-              {loading && !garden
+              {!dataReady && !garden
                 ? 'Loading the garden…'
-                : `${formatOxygenMl(garden?.totalOxygen ?? 0)} produced in total`}
+                : `${formatOxygenMl(garden?.totalOxygen ?? 0)} oxygen · ${formatPollenMg(garden?.totalPollen ?? 0)} pollen`}
             </ThemedText>
           </View>
           <FriendlyButton
@@ -489,7 +589,7 @@ export default function CommunityGardenScreen() {
 
         {showMembers ? (
           <GardenFrame contentStyle={styles.members}>
-            <ThemedText type="smallBold">Oxygen from members</ThemedText>
+            <ThemedText type="smallBold">From members</ThemedText>
             {(garden?.contributions ?? []).length === 0 ? (
               <ThemedText type="small" themeColor="textSecondary">
                 No members yet.
@@ -500,7 +600,9 @@ export default function CommunityGardenScreen() {
                   <ThemedText type="small" style={styles.statName} numberOfLines={1}>
                     {member.displayName}
                   </ThemedText>
-                  <ThemedText type="smallBold">{formatOxygenMl(member.oxygenMl)}</ThemedText>
+                  <ThemedText type="smallBold" numberOfLines={1}>
+                    {formatOxygenMl(member.oxygenMl)} · {formatPollenMg(member.pollenMg)}
+                  </ThemedText>
                 </View>
               ))
             )}
@@ -521,7 +623,7 @@ export default function CommunityGardenScreen() {
             }}
           />
           <FriendlyButton
-            label={removing ? 'Done removing' : 'Remove items'}
+            label={removing ? 'Done' : 'Take back'}
             variant={removing ? 'primary' : 'ghost'}
             disabled={busy || !garden}
             onPress={() => {
@@ -565,20 +667,23 @@ export default function CommunityGardenScreen() {
             ]}>
             <GardenGrass width={grassW} height={grassH} />
           </Animated.View>
-          <View pointerEvents="box-none" style={styles.cameraHost}>
+          <View pointerEvents="box-none" style={[styles.cameraHost, showVeil ? styles.hiddenGarden : null]}>
             <Animated.View style={[styles.camera, camera.cameraStyle]}>
               <View style={{ padding: GARDEN_SHAPE_BORDER }}>
                 <View style={{ width: board.width, height: board.height, position: 'relative' }}>
                   <GardenBed
-                    tiles={garden?.tiles ?? []}
+                    tiles={land}
                     minCol={bounds.minCol}
                     minRow={bounds.minRow}
                     columns={columns}
                     rows={rows}
+                    cellSize={board.cell}
                   />
                   {cells.map((cell) => {
                     const key = tileKey(cell.col, cell.row);
                     const laid = itemAtCell.get(key) ?? null;
+                    const plant = plantAt.get(key) ?? null;
+                    const yours = laid?.ownerId === userId || plant?.ownerId === userId;
                     return (
                       <BoardCell
                         key={cell.owned ? cell.id : key}
@@ -588,10 +693,11 @@ export default function CommunityGardenScreen() {
                         owned={cell.owned}
                         selected={selectedPlots.includes(key)}
                         hovered={hoverKey === key && cell.owned}
-                        disabled={busy || (cell.owned ? buying || (removing ? !(laid && laid.ownerId === userId) : false) : !buying)}
-                        plant={plantAt.get(key) ?? null}
+                        disabled={busy || (cell.owned ? buying || (removing && !yours) : !buying)}
+                        plant={plant}
                         item={laid}
                         canDrag={cell.owned && !buying && !removing && laid?.ownerId === userId}
+                        canDragPlant={cell.owned && !buying && !removing && plant?.ownerId === userId}
                         onPress={() => {
                           if (!cell.owned) {
                             togglePlot(cell.col, cell.row);
@@ -619,6 +725,7 @@ export default function CommunityGardenScreen() {
               </View>
             </Animated.View>
           </View>
+          <GardenLoadingVeil visible={showVeil} columns={columns} rows={rows} />
         </View>
 
         <View ref={kitRef} style={[styles.kit, { height: kitHeight }]}>
@@ -737,6 +844,7 @@ function BoardCell({
   plant,
   item,
   canDrag,
+  canDragPlant = false,
   onPress,
   onDragStart,
   onDragMove,
@@ -752,16 +860,28 @@ function BoardCell({
   plant: CommunityGarden['plants'][number] | null;
   item: CommunityGardenItem | null;
   canDrag: boolean;
+  canDragPlant?: boolean;
   onPress: () => void;
   onDragStart: (kind: DragState['kind'], id: string, x: number, y: number) => void;
   onDragMove: (x: number, y: number) => void;
   onDragEnd: (x: number, y: number) => void;
 }) {
   const itemId = item?.id ?? null;
+  const plantId = plant?.id ?? null;
+  const dragKind: DragState['kind'] | null =
+    canDrag && itemId ? 'item' : canDragPlant && plantId ? 'plant' : null;
+  const dragId = dragKind === 'item' ? itemId : plantId;
   const gesture = useDragGesture({
-    enabled: canDrag && itemId != null,
+    enabled: dragKind != null && dragId != null,
     onBoard: true,
-    onStart: useCallback((x, y) => itemId && onDragStart('item', itemId, x, y), [itemId, onDragStart]),
+    onStart: useCallback(
+      (x, y) => {
+        if (dragKind && dragId) {
+          onDragStart(dragKind, dragId, x, y);
+        }
+      },
+      [dragId, dragKind, onDragStart],
+    ),
     onMove: onDragMove,
     onEnd: onDragEnd,
   });
@@ -1051,6 +1171,9 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     zIndex: 1,
+  },
+  hiddenGarden: {
+    opacity: 0,
   },
   camera: {
     position: 'absolute',

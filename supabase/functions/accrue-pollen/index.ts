@@ -139,13 +139,24 @@ Deno.serve(async (req: Request) => {
 
   for (const [userId, earned] of credits) {
     const amount = earned.reduce((sum, plant) => sum + plant.mg, 0);
+    const plantPollen = earned.map((plant) => ({ plant_id: plant.plantId, mg: plant.mg }));
     const { error: creditError } = await admin.rpc('credit_user_pollen', {
       target_user_id: userId,
       amount,
-      plant_pollen: earned.map((plant) => ({ plant_id: plant.plantId, mg: plant.mg })),
+      plant_pollen: plantPollen,
     });
     if (creditError) {
       console.error(`accrue-pollen: credit ${userId}: ${creditError.message}`);
+      continue;
+    }
+
+    // Same plant milligrams, but only rows that sit on a community garden are kept.
+    const { error: communityError } = await admin.rpc('credit_community_garden_pollen', {
+      p_user_id: userId,
+      p_plant_pollen: plantPollen,
+    });
+    if (communityError) {
+      console.error(`accrue-pollen: community credit ${userId}: ${communityError.message}`);
     }
   }
 

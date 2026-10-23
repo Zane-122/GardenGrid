@@ -37,6 +37,7 @@ export type CommunityGardenContribution = {
   userId: string;
   displayName: string;
   oxygenMl: number;
+  pollenMg: number;
 };
 
 export type CommunityKitPlant = {
@@ -60,6 +61,7 @@ export type CommunityKitItem = {
 export type CommunityGarden = {
   name: string;
   totalOxygen: number;
+  totalPollen: number;
   tiles: CommunityGardenTile[];
   plants: CommunityGardenPlant[];
   items: CommunityGardenItem[];
@@ -107,6 +109,7 @@ export async function getCommunityGarden(communityId: string): Promise<Community
   return {
     name: text(payload.name, 'Community garden'),
     totalOxygen: numberValue(payload.totalOxygen),
+    totalPollen: numberValue(payload.totalPollen),
     tiles: asArray(payload.tiles).map((entry) => {
       const row = asRecord(entry);
       return { id: text(row.id), col: numberValue(row.col), row: numberValue(row.row) };
@@ -122,6 +125,7 @@ export async function getCommunityGarden(communityId: string): Promise<Community
         userId: text(row.userId),
         displayName: text(row.displayName, 'Member'),
         oxygenMl: numberValue(row.oxygenMl),
+        pollenMg: numberValue(row.pollenMg ?? row.pollen_mg),
       };
     }),
     kitPlants: kitPlants.map((plant) => ({
@@ -160,6 +164,16 @@ export async function donateItemToCommunity(itemId: string, communityId: string,
     target_community: communityId,
     target_col: col,
     target_row: row,
+  });
+  if (error) {
+    throw error;
+  }
+}
+
+export async function removePlantFromCommunity(plantId: string, communityId: string) {
+  const { error } = await supabase.rpc('remove_plant_from_community', {
+    target_plant_id: plantId,
+    target_community: communityId,
   });
   if (error) {
     throw error;
