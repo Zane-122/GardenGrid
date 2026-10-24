@@ -59,6 +59,8 @@ type GardenCameraOptions = {
    * Use react-native-gesture-handler pan and pinch on those screens instead.
    */
   handlerGestures?: boolean;
+  /** Opening zoom, for boards drawn at a fixed plot size and zoomed out to fit. */
+  initialScale?: number;
 };
 
 /**
@@ -75,6 +77,7 @@ export function useGardenCamera({
   onViewportLayout,
   bindKey = null,
   handlerGestures = false,
+  initialScale,
 }: GardenCameraOptions) {
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const scaleSv = useSharedValue(1);
@@ -291,7 +294,9 @@ export function useGardenCamera({
       return;
     }
     const scale =
-      Platform.OS === "web" || userMovedCamera.current
+      initialScale != null && !userMovedCamera.current
+        ? clampZoom(initialScale)
+        : Platform.OS === "web" || userMovedCamera.current
         ? scaleRef.current || 1
         : clampZoom(Math.max(1, PHONE_CELL / board.cell));
     const visualW = (board.width + pad) * scale;

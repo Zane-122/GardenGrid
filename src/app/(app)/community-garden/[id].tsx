@@ -1,9 +1,9 @@
 import { Image } from 'expo-image';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
-import { GestureDetector, ScrollView } from 'react-native-gesture-handler';
-import Animated from 'react-native-reanimated';
+import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handler';
+import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
 import { FriendlyButton } from '@/components/app/friendly-button';
 import { GardenFrame } from '@/components/app/garden-frame';
@@ -17,6 +17,7 @@ import { GardenPalette, Radius, Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/auth';
 import { contains, measureView, useGardenCamera, type Frame } from '@/hooks/use-garden-camera';
 import { useDragGesture } from '@/hooks/use-drag-gesture';
+import { useTweenedNumber } from '@/hooks/use-tweened-number';
 import { useTheme } from '@/hooks/use-theme';
 import {
   buyCommunityPlots,
@@ -45,8 +46,11 @@ import { isStandingItem, itemCells, itemSpan, shopItemImageUrl } from '@/utils/s
 
 type DragState = { kind: 'plant' | 'item'; id: string; x: number; y: number };
 
-const KIT_HEIGHT_MIN = 210;
-const KIT_HEIGHT_MAX = 280;
+/** Plots are drawn at the size a small garden gets, then zoomed out to fit, so the border keeps the same proportion. */
+const BOARD_CELL = 96;
+const SIDE_CLOSED = 56;
+const SIDE_OPEN = 252;
+const KIT_BOTTOM_BREAKPOINT = 720;
 
 function errorText(error: unknown, fallback: string) {
   if (error && typeof error === 'object' && 'message' in error && typeof (error as { message: unknown }).message === 'string') {
@@ -68,16 +72,58 @@ export default function CommunityGardenScreen() {
   const [buying, setBuying] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
+  const [showNames, setShowNames] = useState(false);
   const [selectedPlots, setSelectedPlots] = useState<string[]>([]);
   const [selectedPlantId, setSelectedPlantId] = useState<string | null>(null);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [drag, setDrag] = useState<DragState | null>(null);
   const [hoverKey, setHoverKey] = useState<string | null>(null);
-  const [viewport, setViewport] = useState({ width: 0, height: 0 });
+  const [, setViewport] = useState({ width: 0, height: 0 });
 
   const userId = user?.id ?? null;
-  const kitHeight = Math.round(Math.min(KIT_HEIGHT_MAX, Math.max(KIT_HEIGHT_MIN, windowHeight * 0.34)));
+  const [sideOpen, setSideOpen] = useState(false);
+  const kitFromBottom = windowWidth < KIT_BOTTOM_BREAKPOINT;
+  const sheetOpen = Math.round(Math.min(280, Math.max(210, windowHeight * 0.34)));
+  const kitExtent = useTweenedNumber(sideOpen ? SIDE_OPEN : SIDE_CLOSED);
+  const kitHeight = useSharedValue(SIDE_CLOSED);
+  const sheetLimit = useSharedValue(sheetOpen);
+  const sheetDragOrigin = useSharedValue(SIDE_CLOSED);
+  const kitSheetStyle = useAnimatedStyle(() => ({ height: kitHeight.value }));
+
+  useEffect(() => {
+    sheetLimit.value = sheetOpen;
+    if (!kitFromBottom) {
+      return;
+    }
+    kitHeight.value = withTiming(sideOpen ? sheetOpen : SIDE_CLOSED, { duration: 220 });
+  }, [kitFromBottom, kitHeight, sheetLimit, sheetOpen, sideOpen]);
+
+  const sheetDrag = useMemo(
+    () =>
+      Gesture.Pan()
+        .enabled(kitFromBottom)
+        .minDistance(10)
+        .onStart(() => {
+          sheetDragOrigin.value = kitHeight.value;
+        })
+        .onUpdate((event) => {
+          const next = sheetDragOrigin.value - event.translationY;
+          kitHeight.value = Math.min(sheetLimit.value, Math.max(SIDE_CLOSED, next));
+        })
+        .onEnd((event) => {
+          const limit = sheetLimit.value;
+          const open =
+            event.velocityY > 600
+              ? false
+              : event.velocityY < -600
+                ? true
+                : kitHeight.value > (limit + SIDE_CLOSED) / 2;
+          kitHeight.value = withTiming(open ? limit : SIDE_CLOSED, { duration: 180 });
+          runOnJS(setSideOpen)(open);
+        }),
+    [kitFromBottom, kitHeight, sheetDragOrigin, sheetLimit],
+  );
 
   const gardenRef = useRef(garden);
   gardenRef.current = garden;
@@ -188,6 +234,8 @@ export default function CommunityGardenScreen() {
     return [...owned, ...open];
   }, [candidates, garden?.tiles, selectedCells]);
 
+  const cellByKey = useMemo(() => new Map(cells.map((cell) => [tileKey(cell.col, cell.row), cell])), [cells]);
+
   const bounds = useMemo(() => {
     const cols = cells.map((cell) => cell.col);
     const rows = cells.map((cell) => cell.row);
@@ -208,23 +256,23 @@ export default function CommunityGardenScreen() {
     const ownedRows = Math.max(1, ownedBounds.maxRow - ownedBounds.minRow + 1);
     const chrome = GARDEN_SHAPE_BORDER * 2;
     return gardenBoardSize(
-      Math.max(0, (viewport.width || windowWidth) - chrome),
-      Math.max(0, (viewport.height || windowHeight) - chrome),
+      Math.max(0, windowWidth - chrome),
+      Math.max(0, windowHeight - chrome),
       ownedColumns,
       ownedRows,
     );
-  }, [garden?.tiles, viewport.height, viewport.width, windowHeight, windowWidth]);
+  }, [garden?.tiles, windowHeight, windowWidth]);
 
   const board = useMemo(() => {
     const gapX = GARDEN_SLOT_GAP * Math.max(0, columns - 1);
     const gapY = GARDEN_SLOT_GAP * Math.max(0, rows - 1);
-    const cell = ownedFit.cell;
+    const cell = BOARD_CELL;
     return {
       cell,
       width: cell * columns + gapX,
       height: cell * rows + gapY,
     };
-  }, [columns, ownedFit.cell, rows]);
+  }, [columns, rows]);
   const stride = board.cell + GARDEN_SLOT_GAP;
 
   const imageUrls = useMemo(
@@ -255,6 +303,8 @@ export default function CommunityGardenScreen() {
     },
     isDragging: () => dragRef.current != null,
     onViewportLayout: setViewport,
+    bindKey: communityId ?? null,
+    initialScale: Math.min(1, Math.max(0.55, ownedFit.cell / BOARD_CELL)),
   });
   const grassW = board.width + GARDEN_SHAPE_BORDER * 2 + camera.grassPad * 2;
   const grassH = board.height + GARDEN_SHAPE_BORDER * 2 + camera.grassPad * 2;
@@ -550,7 +600,9 @@ export default function CommunityGardenScreen() {
 
   const holding = Boolean(selectedPlantId || selectedItemId);
   const hint = buying
-    ? `You have ${Math.round(balances.oxygen).toLocaleString()} oxygen and ${Math.round(balances.pollen).toLocaleString()} pollen.`
+    ? selectedPlots.length > 0
+      ? `Buy ${selectedPlots.length} for ${price.oxygen.toLocaleString()} oxygen, ${price.pollen.toLocaleString()} pollen. You have ${Math.round(balances.oxygen).toLocaleString()} and ${Math.round(balances.pollen).toLocaleString()}.`
+      : `You have ${Math.round(balances.oxygen).toLocaleString()} oxygen and ${Math.round(balances.pollen).toLocaleString()} pollen.`
     : removing
       ? 'Tap one of your plants or items to take it back. Things other members gave stay put.'
       : holding
@@ -612,7 +664,8 @@ export default function CommunityGardenScreen() {
 
         <View style={styles.actions}>
           <FriendlyButton
-            label={buying ? 'Stop buying' : 'Buy plots'}
+            style={styles.smallButton}
+            label={buying ? 'Stop' : 'Buy plots'}
             variant={buying ? 'ghost' : 'primary'}
             disabled={busy || !garden}
             onPress={() => {
@@ -624,6 +677,7 @@ export default function CommunityGardenScreen() {
             }}
           />
           <FriendlyButton
+            style={styles.smallButton}
             label={removing ? 'Done' : 'Take back'}
             variant={removing ? 'primary' : 'ghost'}
             disabled={busy || !garden}
@@ -635,15 +689,16 @@ export default function CommunityGardenScreen() {
               setSelectedItemId(null);
             }}
           />
+          <FriendlyButton
+            style={styles.smallButton}
+            label={showNames ? 'Hide names' : 'Names'}
+            variant={showNames ? 'primary' : 'ghost'}
+            onPress={() => setShowNames((current) => !current)}
+          />
           {buying ? (
             <FriendlyButton
-              label={
-                selectedPlots.length === 0
-                  ? 'Select edge plots'
-                  : busy
-                    ? 'Buying…'
-                    : `Buy ${selectedPlots.length} · ${price.oxygen.toLocaleString()} oxygen, ${price.pollen.toLocaleString()} pollen`
-              }
+            style={styles.smallButton}
+              label={busy ? 'Buying…' : selectedPlots.length === 0 ? 'Pick plots' : `Buy ${selectedPlots.length}`}
               disabled={busy || selectedPlots.length === 0}
               onPress={() => void confirmBuy()}
             />
@@ -658,6 +713,7 @@ export default function CommunityGardenScreen() {
           </ThemedText>
         ) : null}
 
+        <View style={styles.stage}>
         <View ref={camera.viewportRef} style={styles.viewport} {...camera.viewportProps}>
           <Animated.View
             pointerEvents="none"
@@ -671,7 +727,7 @@ export default function CommunityGardenScreen() {
           <View pointerEvents="box-none" style={[styles.cameraHost, showVeil ? styles.hiddenGarden : null]}>
             <Animated.View style={[styles.camera, camera.cameraStyle]}>
               <View style={{ padding: GARDEN_SHAPE_BORDER }}>
-                <View style={{ width: board.width, height: board.height, position: 'relative' }}>
+                <View style={[styles.board, { width: board.width, height: board.height }]}>
                   <GardenBed
                     tiles={land}
                     minCol={bounds.minCol}
@@ -680,23 +736,28 @@ export default function CommunityGardenScreen() {
                     rows={rows}
                     cellSize={board.cell}
                   />
-                  {cells.map((cell) => {
+                  {Array.from({ length: rows }, (_, rowOffset) => (
+                    <View key={bounds.minRow + rowOffset} style={styles.row}>
+                      {Array.from({ length: columns }, (_, columnOffset) => {
+                    const cell = cellByKey.get(tileKey(bounds.minCol + columnOffset, bounds.minRow + rowOffset));
+                    if (!cell) {
+                      return <View key={columnOffset} style={{ width: board.cell, height: board.cell }} />;
+                    }
                     const key = tileKey(cell.col, cell.row);
                     const laid = itemAtCell.get(key) ?? null;
                     const plant = plantAt.get(key) ?? null;
                     const yours = laid?.ownerId === userId || plant?.ownerId === userId;
                     return (
                       <BoardCell
-                        key={cell.owned ? cell.id : key}
-                        left={(cell.col - bounds.minCol) * stride}
-                        top={(cell.row - bounds.minRow) * stride}
                         size={board.cell}
+                        key={cell.owned ? cell.id : key}
                         owned={cell.owned}
                         selected={selectedPlots.includes(key)}
                         hovered={hoverKey === key && cell.owned}
                         disabled={busy || (cell.owned ? buying || (removing && !yours) : !buying)}
                         plant={plant}
                         item={laid}
+                        showNames={showNames}
                         canDrag={cell.owned && !buying && !removing && laid?.ownerId === userId}
                         canDragPlant={cell.owned && !buying && !removing && plant?.ownerId === userId}
                         onPress={() => {
@@ -712,6 +773,8 @@ export default function CommunityGardenScreen() {
                       />
                     );
                   })}
+                    </View>
+                  ))}
                   {(garden?.items ?? []).map((item) => (
                     <ItemOverlay
                       key={item.id}
@@ -720,6 +783,7 @@ export default function CommunityGardenScreen() {
                       left={(item.col - bounds.minCol) * stride}
                       top={(item.row - bounds.minRow) * stride}
                       hidden={drag?.id === item.id}
+                      showNames={showNames}
                     />
                   ))}
                 </View>
@@ -729,8 +793,33 @@ export default function CommunityGardenScreen() {
           <GardenLoadingVeil visible={showVeil} columns={columns} rows={rows} />
         </View>
 
-        <View ref={kitRef} style={[styles.kit, { height: kitHeight }]}>
+        <Animated.View
+          ref={kitRef}
+          style={[
+            styles.sidePanel,
+            kitFromBottom ? styles.kitSheet : styles.kitSide,
+            kitFromBottom ? kitSheetStyle : { width: kitExtent },
+          ]}
+          onLayout={() => {
+            if (kitRef.current) {
+              measureView(kitRef.current, (frame) => {
+                kitFrame.current = frame;
+              });
+            }
+          }}>
+          <View
+            style={[styles.drawer, kitFromBottom && { width: '100%', height: sheetOpen - SIDE_CLOSED }]}
+            pointerEvents={sideOpen ? 'auto' : 'none'}>
+          <View style={styles.drawerHeader}>
+            <ThemedText type="smallBold" style={styles.kitTitle}>
+              Plants and tiles
+            </ThemedText>
+            <ThemedText type="small" style={styles.kitHint}>
+              Drag or tap a plant or tile, then a plot. Drag your own back here to take it.
+            </ThemedText>
+          </View>
           <ScrollView
+            style={styles.sideScroll}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.kitList}
             nestedScrollEnabled>
@@ -794,6 +883,43 @@ export default function CommunityGardenScreen() {
               )}
             </View>
           </ScrollView>
+          </View>
+          <GestureDetector gesture={sheetDrag}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ expanded: sideOpen }}
+              accessibilityLabel={sideOpen ? 'Collapse kit' : 'Expand kit'}
+              onPress={() => setSideOpen((open) => !open)}
+              style={({ pressed }) => [kitFromBottom ? styles.sheetBar : styles.rail, pressed && { opacity: 0.75 }]}>
+              <ThemedText type="smallBold" style={styles.railChevron}>
+                {kitFromBottom ? (sideOpen ? '▼' : '▲') : sideOpen ? '›' : '‹'}
+              </ThemedText>
+              {kitFromBottom ? (
+                <ThemedText type="smallBold" style={styles.sheetLabel}>
+                  Kit
+                </ThemedText>
+              ) : (
+                <View style={styles.railLabelWrap}>
+                  <ThemedText type="smallBold" style={styles.railLabel}>
+                    Kit
+                  </ThemedText>
+                </View>
+              )}
+              <View style={kitFromBottom ? styles.sheetStats : undefined}>
+                <View style={styles.railStat}>
+                  <ThemedText type="smallBold" style={styles.railStatText}>
+                    {garden?.kitPlants.length ?? 0}
+                  </ThemedText>
+                </View>
+                <View style={styles.railStat}>
+                  <ThemedText type="smallBold" style={styles.railStatText}>
+                    {garden?.kitItems.length ?? 0}
+                  </ThemedText>
+                </View>
+              </View>
+            </Pressable>
+          </GestureDetector>
+        </Animated.View>
         </View>
 
         {drag && (draggingPlant || draggingItem) ? (
@@ -835,8 +961,6 @@ function footprint(item: Pick<CommunityGardenItem, 'footprintCols' | 'footprintR
 }
 
 function BoardCell({
-  left,
-  top,
   size,
   owned,
   selected,
@@ -844,6 +968,7 @@ function BoardCell({
   disabled,
   plant,
   item,
+  showNames,
   canDrag,
   canDragPlant = false,
   onPress,
@@ -851,8 +976,6 @@ function BoardCell({
   onDragMove,
   onDragEnd,
 }: {
-  left: number;
-  top: number;
   size: number;
   owned: boolean;
   selected: boolean;
@@ -860,6 +983,7 @@ function BoardCell({
   disabled: boolean;
   plant: CommunityGarden['plants'][number] | null;
   item: CommunityGardenItem | null;
+  showNames: boolean;
   canDrag: boolean;
   canDragPlant?: boolean;
   onPress: () => void;
@@ -926,7 +1050,7 @@ function BoardCell({
           />
         )
       ) : null}
-      {plant ? <PlantFace name={plant.name} uri={plant.photoUrl ?? plant.imageUrl} owner={plant.ownerName} /> : null}
+      {plant ? <PlantFace uri={plant.photoUrl ?? plant.imageUrl} owner={showNames ? plant.ownerName : null} /> : null}
       {uri && !lamp ? (
         <Image
           source={uri}
@@ -935,8 +1059,8 @@ function BoardCell({
           pointerEvents="none"
         />
       ) : null}
-      {item && single ? (
-        <ThemedText type="small" numberOfLines={1} style={styles.owner}>
+      {showNames && item && single ? (
+        <ThemedText type="smallBold" numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7} style={styles.owner}>
           {item.ownerName}
         </ThemedText>
       ) : null}
@@ -946,7 +1070,7 @@ function BoardCell({
   );
 
   return (
-    <View style={[styles.cellWrap, { left, top, width: size, height: size }]}>
+    <View style={{ width: size, height: size }}>
       {gesture ? (
         <View style={styles.fill}>
           <GestureDetector gesture={gesture}>{body}</GestureDetector>
@@ -965,12 +1089,14 @@ function ItemOverlay({
   left,
   top,
   hidden,
+  showNames,
 }: {
   item: CommunityGardenItem;
   cell: number;
   left: number;
   top: number;
   hidden: boolean;
+  showNames: boolean;
 }) {
   if (hidden) {
     return null;
@@ -984,7 +1110,14 @@ function ItemOverlay({
     return (
       <View pointerEvents="none" style={[styles.streetLamp, { left, top, width: cell, height: cell }]}>
         <View style={styles.streetLampBox}>
-          <Image source={uri} style={styles.streetLampImage} contentFit="contain" />
+          <Image
+            source={uri}
+            style={styles.streetLampImage}
+            contentFit="contain"
+            priority="high"
+            cachePolicy="memory-disk"
+            loading="eager"
+          />
         </View>
         <View pointerEvents="none" style={styles.lampGlowBox}>
           <ItemGlow kind="lamp" />
@@ -1011,20 +1144,34 @@ function ItemOverlay({
           }}
         />
       ) : null}
-      <ThemedText type="small" numberOfLines={1} style={styles.owner}>
-        {item.ownerName}
-      </ThemedText>
+      {showNames ? (
+        <ThemedText type="smallBold" numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7} style={styles.owner}>
+          {item.ownerName}
+        </ThemedText>
+      ) : null}
     </View>
   );
 }
 
-function PlantFace({ name, uri, owner }: { name: string; uri: string | null; owner?: string }) {
+function PlantFace({ uri, owner }: { uri: string | null; owner: string | null }) {
   return (
     <View style={styles.fill}>
-      {uri ? <Image source={{ uri }} style={styles.fill} contentFit="cover" /> : null}
-      <ThemedText type="small" numberOfLines={1} style={styles.owner}>
-        {owner ?? name}
-      </ThemedText>
+      {uri ? (
+        <Image
+          source={{ uri }}
+          style={styles.groundFill}
+          contentFit="cover"
+          priority="high"
+          cachePolicy="memory-disk"
+          loading="eager"
+          pointerEvents="none"
+        />
+      ) : null}
+      {owner ? (
+        <ThemedText type="smallBold" numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7} style={styles.owner}>
+          {owner}
+        </ThemedText>
+      ) : null}
     </View>
   );
 }
@@ -1151,8 +1298,7 @@ const styles = StyleSheet.create({
   statName: { flex: 1 },
   actions: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.two,
+    gap: Spacing.one,
     paddingHorizontal: Spacing.three,
   },
   hint: { paddingHorizontal: Spacing.three, paddingVertical: Spacing.one },
@@ -1188,10 +1334,11 @@ const styles = StyleSheet.create({
     overflow: 'visible',
     transformOrigin: 'left top',
   },
-  cellWrap: { position: 'absolute' },
+  board: { position: 'relative', gap: GARDEN_SLOT_GAP },
+  row: { flexDirection: 'row', gap: GARDEN_SLOT_GAP },
   cell: {
     flex: 1,
-    borderRadius: Radius.sm,
+    borderRadius: Platform.OS === 'web' ? Radius.sm : 5,
     overflow: 'hidden',
   },
   fill: { flex: 1, width: '100%', height: '100%' },
@@ -1200,31 +1347,100 @@ const styles = StyleSheet.create({
   decor: { position: 'absolute', width: '72%', height: '72%', left: '14%', top: '14%', zIndex: 1 },
   piece: { position: 'absolute', zIndex: 2 },
   /** Street lamp: base near the plot's bottom edge, standing about two plots tall. */
-  streetLamp: { position: 'absolute', zIndex: 3 },
-  lampGlowBox: { position: 'absolute', left: 0, right: 0, bottom: '8%', height: '200%' },
-  streetLampBox: {
+  streetLamp: { position: 'absolute', zIndex: 3, alignItems: 'center', justifyContent: 'flex-end' },
+  lampGlowBox: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '200%' },
+  streetLampBox: { height: '200%', aspectRatio: 49 / 332 },
+  streetLampImage: { width: '100%', height: '100%' },
+  owner: {
     position: 'absolute',
     left: 0,
     right: 0,
-    bottom: '8%',
-    height: '200%',
-    alignItems: 'center',
+    bottom: 0,
+    paddingHorizontal: Spacing.one,
+    paddingVertical: Spacing.one,
+    color: '#FFFFFF',
+    fontWeight: '700',
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
   },
-  streetLampImage: { height: '100%', aspectRatio: 49 / 332 },
-  owner: {
+  stage: { flex: 1, position: 'relative' },
+  smallButton: { flex: 1, minHeight: 36, paddingHorizontal: Spacing.two },
+  sidePanel: {
     position: 'absolute',
-    left: 4,
-    right: 4,
-    bottom: 2,
-    color: '#fff',
-    textShadowColor: 'rgba(0,0,0,0.7)',
-    textShadowRadius: 3,
-  },
-  kit: {
-    borderTopWidth: 1,
+    zIndex: 6,
+    overflow: 'hidden',
+    borderWidth: 1,
     borderColor: GardenPalette.panelBorder,
     backgroundColor: GardenPalette.panel,
+    shadowColor: '#3B2A1A',
+    shadowOpacity: 0.16,
+    shadowRadius: 16,
+    elevation: 8,
   },
+  kitSide: {
+    top: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    borderRadius: Radius.lg,
+    shadowOffset: { width: -6, height: 0 },
+  },
+  kitSheet: {
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: 'column',
+    justifyContent: 'flex-end',
+    borderTopLeftRadius: Radius.lg,
+    borderTopRightRadius: Radius.lg,
+    shadowOffset: { width: 0, height: -6 },
+  },
+  drawer: { width: SIDE_OPEN - SIDE_CLOSED, height: '100%', flexShrink: 0 },
+  drawerHeader: {
+    paddingHorizontal: Spacing.three,
+    paddingTop: Spacing.three,
+    paddingBottom: Spacing.two,
+    gap: Spacing.one,
+    borderBottomWidth: 1,
+    borderBottomColor: GardenPalette.panelBorder,
+  },
+  sideScroll: { flex: 1 },
+  sheetBar: {
+    height: SIDE_CLOSED,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.four,
+    gap: Spacing.three,
+    backgroundColor: GardenPalette.bar,
+  },
+  sheetLabel: { flex: 1, color: GardenPalette.barText },
+  sheetStats: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  rail: {
+    width: SIDE_CLOSED,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.three,
+    paddingVertical: Spacing.three,
+    backgroundColor: GardenPalette.bar,
+  },
+  railChevron: { color: GardenPalette.barText, fontSize: 22, lineHeight: 24 },
+  railLabelWrap: { height: 36, alignItems: 'center', justifyContent: 'center' },
+  railLabel: {
+    color: GardenPalette.barTextMuted,
+    transform: [{ rotate: '-90deg' }],
+    width: 36,
+    textAlign: 'center',
+  },
+  railStat: {
+    minWidth: 28,
+    height: 28,
+    borderRadius: Radius.pill,
+    backgroundColor: GardenPalette.barPill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.one,
+  },
+  railStatText: { color: GardenPalette.barText },
   kitList: { padding: Spacing.three, gap: Spacing.four },
   kitSection: { gap: Spacing.two },
   kitHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
