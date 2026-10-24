@@ -14,6 +14,7 @@ import { GARDEN_SLOT_GAP } from "@/utils/garden";
 
 const MIN_VEIL_MS = 720;
 const STAGGER_MS = 48;
+const MAX_GRID = 220;
 
 type GardenLoadingVeilProps = {
   visible: boolean;
@@ -27,18 +28,36 @@ export function GardenLoadingVeil({
   columns = 3,
   rows = 4,
 }: GardenLoadingVeilProps) {
+  const [area, setArea] = useState({ width: 0, height: 0 });
   if (!visible) {
     return null;
   }
 
+  // Square blocks sized to fit the covered area, so the grid stays centered at any phone size.
+  const gaps = GARDEN_SLOT_GAP * (columns - 1);
+  const rowGaps = GARDEN_SLOT_GAP * (rows - 1);
+  const block = Math.max(
+    6,
+    Math.floor(
+      Math.min(
+        (Math.min(area.width * 0.6, MAX_GRID) - gaps) / columns,
+        (Math.min(area.height * 0.6, MAX_GRID * 1.4) - rowGaps) / rows,
+      ),
+    ),
+  );
+
   return (
-    <View pointerEvents="auto" style={styles.cover}>
-      <View style={[styles.grid, { gap: GARDEN_SLOT_GAP }]}>
+    <View
+      pointerEvents="auto"
+      style={styles.cover}
+      onLayout={(event) => setArea(event.nativeEvent.layout)}
+    >
+      <View style={[styles.grid, { gap: GARDEN_SLOT_GAP, opacity: area.width > 0 ? 1 : 0 }]}>
         {Array.from({ length: rows }, (_, row) => (
           <View key={row} style={[styles.row, { gap: GARDEN_SLOT_GAP }]}>
             {Array.from({ length: columns }, (_, col) => {
               const index = row * columns + col;
-              return <FadeBlock key={index} delay={index * STAGGER_MS} />;
+              return <FadeBlock key={index} size={block} delay={index * STAGGER_MS} />;
             })}
           </View>
         ))}
@@ -47,7 +66,7 @@ export function GardenLoadingVeil({
   );
 }
 
-function FadeBlock({ delay }: { delay: number }) {
+function FadeBlock({ delay, size }: { delay: number; size: number }) {
   const opacity = useSharedValue(0.12);
   useEffect(() => {
     opacity.value = withDelay(
@@ -56,7 +75,7 @@ function FadeBlock({ delay }: { delay: number }) {
     );
   }, [delay, opacity]);
   const style = useAnimatedStyle(() => ({ opacity: opacity.value }));
-  return <Animated.View style={[styles.block, style]} />;
+  return <Animated.View style={[styles.block, { width: size, height: size }, style]} />;
 }
 
 /** Prefetch remote garden art so plots do not pop in after the veil lifts. */
@@ -111,23 +130,23 @@ export function useGardenLoadGate(dataReady: boolean, urls: Array<string | null 
 
 const styles = StyleSheet.create({
   cover: {
-    ...StyleSheet.absoluteFillObject,
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
     zIndex: 30,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: GardenPalette.grass,
   },
   grid: {
-    width: "56%",
-    maxWidth: 220,
-    aspectRatio: 3 / 4,
+    alignItems: "center",
   },
   row: {
-    flex: 1,
     flexDirection: "row",
   },
   block: {
-    flex: 1,
     borderRadius: Radius.sm,
     backgroundColor: GardenPalette.woodOuter,
   },
