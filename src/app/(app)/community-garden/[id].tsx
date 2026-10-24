@@ -40,6 +40,7 @@ import {
   tileKey,
 } from '@/utils/garden';
 import { formatOxygenMl, formatPollenMg, getCurrencyBalances } from '@/utils/plants';
+import { glowKindFor, ItemGlow } from '@/components/grid/item-glow';
 import { isStandingItem, itemCells, itemSpan, shopItemImageUrl } from '@/utils/shop-items';
 
 type DragState = { kind: 'plant' | 'item'; id: string; x: number; y: number };
@@ -940,6 +941,7 @@ function BoardCell({
         </ThemedText>
       ) : null}
       {hovered ? <View pointerEvents="none" style={[styles.groundFill, styles.hover]} /> : null}
+      {uri && glowKindFor(item?.slug) === 'fire' ? <ItemGlow kind="fire" anchor="middle" /> : null}
     </Pressable>
   );
 
@@ -983,6 +985,9 @@ function ItemOverlay({
       <View pointerEvents="none" style={[styles.streetLamp, { left, top, width: cell, height: cell }]}>
         <View style={styles.streetLampBox}>
           <Image source={uri} style={styles.streetLampImage} contentFit="contain" />
+        </View>
+        <View pointerEvents="none" style={styles.lampGlowBox}>
+          <ItemGlow kind="lamp" />
         </View>
       </View>
     );
@@ -1196,6 +1201,7 @@ const styles = StyleSheet.create({
   piece: { position: 'absolute', zIndex: 2 },
   /** Street lamp: base near the plot's bottom edge, standing about two plots tall. */
   streetLamp: { position: 'absolute', zIndex: 3 },
+  lampGlowBox: { position: 'absolute', left: 0, right: 0, bottom: '8%', height: '200%' },
   streetLampBox: {
     position: 'absolute',
     left: 0,

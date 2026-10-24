@@ -25,6 +25,7 @@ import {
   Spacing,
 } from "@/constants/theme";
 import { useAuth } from "@/context/auth";
+import { glowKindFor, ItemGlow, type GlowKind } from "@/components/grid/item-glow";
 import { useTweenedNumber } from "@/hooks/use-tweened-number";
 import {
   assignPlantToSlot,
@@ -1230,6 +1231,7 @@ export default function GridScreen() {
                                   }
                                   imageFit={laid && isStandingItem(laid.slug) ? "contain" : "cover"}
                                   lampArt={laid?.slug === "light"}
+                                  glow={glowKindFor(laid?.slug)}
                                   stoneGround={Boolean(
                                     laid &&
                                       (isStandingItem(laid.slug) ||
@@ -1614,6 +1616,7 @@ const GardenSlotCell = memo(function GardenSlotCell({
   pathUrl = null,
   imageFit = "cover",
   lampArt = false,
+  glow = null,
   stoneGround = false,
   laidItemId = null,
   sourceDragging = false,
@@ -1648,6 +1651,7 @@ const GardenSlotCell = memo(function GardenSlotCell({
   pathUrl?: ShopItemImage | null;
   imageFit?: "cover" | "contain";
   lampArt?: boolean;
+  glow?: GlowKind | null;
   stoneGround?: boolean;
   laidItemId?: string | null;
   sourceDragging?: boolean;
@@ -1811,8 +1815,10 @@ const GardenSlotCell = memo(function GardenSlotCell({
             loading="eager"
             pointerEvents="none"
           />
+          {glow === "lamp" ? <ItemGlow kind="lamp" /> : null}
         </View>
       ) : null}
+      {glow === "fire" && !plant ? <ItemGlow kind="fire" anchor="middle" /> : null}
       {Platform.OS === "web" && reveal && showTurn ? (
         <Pressable
           accessibilityRole="button"

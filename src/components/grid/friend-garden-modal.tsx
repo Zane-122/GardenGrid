@@ -10,6 +10,7 @@ import { GARDEN_SHAPE_BORDER, GardenBed } from "@/components/grid/garden-shape-b
 import { PlantToken } from "@/components/grid/plant-token";
 import { ThemedText } from "@/components/themed-text";
 import { GardenPalette, Radius, Spacing } from "@/constants/theme";
+import { glowKindFor, ItemGlow, type GlowKind } from "@/components/grid/item-glow";
 import { useGardenCamera } from "@/hooks/use-garden-camera";
 import { listFriendGarden } from "@/utils/friend-garden";
 import {
@@ -143,7 +144,7 @@ export function FriendGardenModal({ friend, onClose }: FriendGardenModalProps) {
   const grassW = board.width + GARDEN_SHAPE_BORDER * 2 + camera.grassPad * 2;
   const grassH = board.height + GARDEN_SHAPE_BORDER * 2 + camera.grassPad * 2;
 
-  const viewport = (
+  const Viewport = (
         <View ref={camera.viewportRef} style={styles.viewport} {...camera.viewportProps}>
           <Animated.View
             pointerEvents="none"
@@ -192,6 +193,7 @@ export function FriendGardenModal({ friend, onClose }: FriendGardenModalProps) {
                                 pathUrl={laid && single ? shopItemImageUrl(laid.image_path) : null}
                                 imageFit={laid && isStandingItem(laid.slug) ? "contain" : "cover"}
                                 lampArt={laid?.slug === "light"}
+                                glow={glowKindFor(laid?.slug)}
                                 stoneGround={Boolean(
                                   laid &&
                                     (isStandingItem(laid.slug) ||
@@ -234,6 +236,9 @@ export function FriendGardenModal({ friend, onClose }: FriendGardenModalProps) {
                                 cachePolicy="memory-disk"
                                 loading="eager"
                               />
+                            </View>
+                            <View pointerEvents="none" style={styles.lampGlowBox}>
+                              <ItemGlow kind="lamp" />
                             </View>
                           </View>
                         );
@@ -283,7 +288,7 @@ export function FriendGardenModal({ friend, onClose }: FriendGardenModalProps) {
   return (
     <Modal visible={friend != null} animationType="slide" onRequestClose={onClose}>
       <GestureHandlerRootView style={styles.screen}>
-        {camera.gesture ? <GestureDetector gesture={camera.gesture}>{viewport}</GestureDetector> : viewport}
+        {camera.gesture ? <GestureDetector gesture={camera.gesture}>{Viewport}</GestureDetector> : Viewport}
         <View pointerEvents="box-none" style={styles.header}>
           <View style={styles.titleBlock}>
             <ThemedText type="heading" style={styles.title}>
@@ -314,12 +319,14 @@ function FriendPlot({
   pathUrl,
   imageFit,
   lampArt,
+  glow,
   stoneGround,
 }: {
   plant?: InventoryPlant;
   pathUrl: ShopItemImage | null;
   imageFit: "cover" | "contain";
   lampArt: boolean;
+  glow: GlowKind | null;
   stoneGround: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
@@ -387,6 +394,7 @@ function FriendPlot({
           />
         )}
       </View>
+      {glow === "fire" && !plant ? <ItemGlow kind="fire" anchor="middle" /> : null}
     </View>
   );
 }
@@ -515,6 +523,13 @@ const styles = StyleSheet.create({
     zIndex: 3,
     alignItems: "center",
     justifyContent: "flex-end",
+  },
+  lampGlowBox: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: "200%",
   },
   streetLampBox: {
     height: "200%",
